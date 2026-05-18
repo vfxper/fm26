@@ -810,7 +810,11 @@ def patch_auth():
                 except Exception:
                     pass
                 return _U(1)
-            raise HTTPException(401, "Bad token")
+            # Token decodes to a real user_id but the row is gone (DB
+            # was wiped between sessions). Tell the client to re-login
+            # so they create a fresh account on the new DB instead of
+            # being stuck with a stale token.
+            raise HTTPException(401, "Token expired — please log in again")
 
     deps.get_current_user = get_current_user
 

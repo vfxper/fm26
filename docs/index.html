@@ -1371,6 +1371,20 @@ async function startCareer() {
         game_mode: currentGameMode,
       })
     });
+    // 401 = stale token (server's user table got wiped or JWT secret
+    // rotated). Clear cached creds and bounce to login.
+    if (res.status === 401) {
+      try {
+        localStorage.removeItem('fm26_token');
+        localStorage.removeItem('fm26_career_id');
+      } catch (_) {}
+      authToken = null;
+      alert('Сессия истекла. Войди заново.');
+      if (typeof showAuthScreen === 'function') showAuthScreen();
+      document.getElementById('start-career-btn').textContent = '▶ Начать карьеру';
+      document.getElementById('start-career-btn').disabled = false;
+      return;
+    }
     const data = await res.json();
 
     if (data.id) {
