@@ -3605,6 +3605,7 @@ async function submitOffer(playerId, isLoan) {
     document.getElementById('generic-modal')?.classList.remove('open');
     if (r.success) {
       const fmt = isLoan ? 'арендован' : `куплен за £${_fmt(fee)}`;
+      _maybeShowSigningVideo(playerId, r);
       alert(`Предложение принято. Игрок ${fmt}.`);
       if (typeof loadSquad === 'function') loadSquad();
       if (typeof refreshHomeStats === 'function') refreshHomeStats();
@@ -3623,6 +3624,7 @@ async function submitOffer(playerId, isLoan) {
           ...body, fee: cf,
         }).then(r2 => {
           if (r2.success) {
+            _maybeShowSigningVideo(playerId, r2);
             alert(`Принято. Игрок куплен за £${_fmt(cf)}.`);
             if (typeof loadSquad === 'function') loadSquad();
             if (typeof refreshHomeStats === 'function') refreshHomeStats();
@@ -5066,7 +5068,143 @@ function _filterMatchTimeline(events) {
   return out;
 }
 
+// === PLAYER VIDEO TRIGGERS ===
+// Map scorer/signing name → list of clip URLs. Random one is chosen
+// each time. Names are normalised (lowercase, no diacritics) so
+// "Mbappé", "MBAPPE", "kylian mbappé" all hit the same bucket.
+const _PLAYER_VIDEOS = {
+  "haaland":  ["assets/haaland.MP4"],
+  "erling haaland": ["assets/haaland.MP4"],
+  "mbappe":   ["assets/mbappe.mp4", "assets/mbappe 2.mp4", "assets/mbappe 3.mp4"],
+  "kylian mbappe": ["assets/mbappe.mp4", "assets/mbappe 2.mp4", "assets/mbappe 3.mp4"],
+};
+
+function _normaliseName(s) {
+  if (!s) return "";
+  return String(s)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function _resolveVideoForPlayer(name) {
+  const key = _normaliseName(name);
+  if (!key) return null;
+  if (_PLAYER_VIDEOS[key]) return _PLAYER_VIDEOS[key];
+  for (const k of Object.keys(_PLAYER_VIDEOS)) {
+    if (key.endsWith(k) || key.includes(k)) return _PLAYER_VIDEOS[k];
+  }
+  return null;
+}
+
+function _pluralGoals(n) {
+  const mod10 = n % 10, mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "гол";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "гола";
+  return "голов";
+}
+
+function _extractScorerFromDescription(desc) {
+  if (!desc) return null;
+  // Russian engine: "⚽ Гол! NAME забивает за CLUB!"
+  const m = /Гол!\s*([^!]+?)\s*забивает/i.exec(desc);
+  if (m) return m[1].trim();
+  const m2 = /GOAL!\s*([^!]+?)\s*scores/i.exec(desc);
+  if (m2) return m2[1].trim();
+  return null;
+}
+
+function _maybeShowSigningVideo(playerId, response) {
+  let name = null;
+  if (response) {
+    if (response.player && response.player.name) name = response.player.name;
+    else if (response.player_name) name = response.player_name;
+  }
+  if (!name && Array.isArray(window._squadCache)) {
+    const p = window._squadCache.find(p => p.id === playerId || p.player_id === playerId);
+    if (p) name = p.name;
+  }
+  if (!name) return;
+  if (!_resolveVideoForPlayer(name)) return;
+  setTimeout(() => {
+    _showPlayerVideo(name, `Поздравляем с подписанием ${name}!`, () => {
+      const ok = confirm(
+        `${name} в команде!\n\nХочешь сразу назначить тренировочную роль?`
+      );
+      if (ok && typeof showScreen === 'function') {
+        showScreen('training');
+      }
+    });
+  }, 200);
+}
+
+function _showPlayerVideo(name, captionText, onClose) {
+  const urls = _resolveVideoForPlayer(name);
+  if (!urls || !urls.length) {
+    if (onClose) onClose();
+    return;
+  }
+  const url = urls[Math.floor(Math.random() * urls.length)];
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:99999;'
+    + 'display:flex;align-items:center;justify-content:center;flex-direction:column;'
+    + 'padding:14px';
+  overlay.innerHTML = `
+    <button id="_pv_skip" style="position:absolute;top:14px;right:14px;
+        background:#7c3aed;color:#fff;border:0;padding:10px 18px;border-radius:8px;
+        cursor:pointer;font-size:14px;font-weight:600">Пропустить</button>
+    <div style="color:#fff;font-size:22px;font-weight:700;margin-bottom:14px;text-align:center;
+        text-shadow:0 2px 6px rgba(0,0,0,0.8)">${captionText.replace(/</g,'&lt;')}</div>
+    <video id="_pv_video" autoplay playsinline controls
+           style="max-width:96vw;max-height:80vh;border-radius:12px;
+                  box-shadow:0 20px 60px rgba(0,0,0,0.6)">
+      <source src="${url}" type="video/mp4">
+    </video>
+  `;
+  document.body.appendChild(overlay);
+  const cleanup = () => {
+    try { overlay.remove(); } catch {}
+    if (onClose) onClose();
+  };
+  overlay.querySelector('#_pv_skip').onclick = cleanup;
+  const vid = overlay.querySelector('#_pv_video');
+  vid.onended = cleanup;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) cleanup();
+  });
+}
+
 function showMatchResult(data) {
+  // Hat-trick / video trigger: scan for goals scored by THIS user's
+  // squad, count per scorer name, and if anyone has a video clip
+  // mapped, play it BEFORE showing the result modal so the moment
+  // hits while the score is still hidden.
+  try {
+    const myTeam = data.player_team || data.user_team;
+    const events = Array.isArray(data.events) ? data.events : [];
+    const goalsByScorer = {};
+    for (const ev of events) {
+      const desc = (ev.description || '').toLowerCase();
+      const isGoal = desc.includes('гол') || desc.includes('забива') || ev.event_type === 'goal';
+      if (!isGoal) continue;
+      const isMyTeam = (ev.team === myTeam) || (ev.team === 'home' && data.home_is_player) || (ev.team === 'away' && !data.home_is_player);
+      const name = ev.player_name || ev.player || _extractScorerFromDescription(ev.description);
+      if (!name) continue;
+      // Only count goals by player's own team. Without team metadata we
+      // fall back to scanning all goals so videos still trigger.
+      const key = name.trim();
+      goalsByScorer[key] = (goalsByScorer[key] || 0) + 1;
+    }
+    for (const [name, count] of Object.entries(goalsByScorer)) {
+      if (count >= 3 && _resolveVideoForPlayer(name)) {
+        _showPlayerVideo(name, `${name} забил ${count} ${_pluralGoals(count)}!`, () => {});
+        break;  // one video per match
+      }
+    }
+  } catch (_) {}
+
   const filtered = _filterMatchTimeline(data.events || []);
   const eventsList = filtered.map(e =>
     `<div style="padding:6px 10px;border-bottom:1px solid #1a2634;font-size:12px">
