@@ -3,7 +3,7 @@ services:
     name: fm26-backend
     runtime: python
     plan: free
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt && python seed_local.py || true
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python run_local.py
     envVars:
       - key: PYTHON_VERSION

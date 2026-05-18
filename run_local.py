@@ -920,6 +920,32 @@ if __name__ == "__main__":
     except:
         pass
     
+    # Auto-seed DB on first boot (Render free tier has no shell, so we
+    # can't run seed_local.py manually). Skip if already seeded.
+    try:
+        import sqlite3 as _sq
+        _db_path = os.path.join(os.path.dirname(__file__), "fm26_local.db")
+        if os.path.exists(_db_path):
+            _con = _sq.connect(_db_path)
+            try:
+                _row = _con.execute("SELECT COUNT(*) FROM players").fetchone()
+                _player_count = int(_row[0]) if _row else 0
+            except Exception:
+                _player_count = 0
+            _con.close()
+            if _player_count == 0:
+                print("  Auto-seeding database (first boot)...")
+                try:
+                    import seed_local as _seed
+                    _seed.seed_database()
+                    print("  ✓ Database seeded")
+                except Exception as _e:
+                    print(f"  ⚠ Auto-seed failed: {_e}")
+            else:
+                print(f"  ✓ Database already seeded ({_player_count} players)")
+    except Exception as _e:
+        print(f"  ⚠ Auto-seed check failed: {_e}")
+    
     print("  ✓ SQLite database (no PostgreSQL needed)")
     print("  ✓ In-memory cache (no Redis needed)")
     print("  ✓ Auth disabled (auto-login as dev user)")
