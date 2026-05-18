@@ -5187,6 +5187,8 @@ function _normaliseName(s) {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")  // strip punctuation, keep ascii letters
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -5217,7 +5219,7 @@ function _extractScorerFromDescription(desc) {
   return null;
 }
 
-function _maybeShowSigningVideo(playerId, response) {
+async function _maybeShowSigningVideo(playerId, response) {
   let name = null;
   if (response) {
     if (response.player && response.player.name) name = response.player.name;
@@ -5232,8 +5234,18 @@ function _maybeShowSigningVideo(playerId, response) {
     const p = candidates.find(p => p.id === playerId || p.player_id === playerId);
     if (p) name = p.name;
   }
+  // Last resort: hit the players API directly to look up the name.
+  if (!name && playerId) {
+    try {
+      const data = await api(`/players/${playerId}`);
+      if (data && data.name) name = data.name;
+    } catch (_) {}
+  }
+  console.log('[video] _maybeShowSigningVideo: playerId=', playerId, 'name=', name);
   if (!name) return;
-  if (!_resolveVideoForPlayer(name)) return;
+  const matched = _resolveVideoForPlayer(name);
+  console.log('[video] resolved videos for', name, ':', matched);
+  if (!matched) return;
   setTimeout(() => {
     _showPlayerVideo(name, `Поздравляем с подписанием ${name}!`, () => {
       const ok = confirm(
@@ -5252,7 +5264,11 @@ function _showPlayerVideo(name, captionText, onClose) {
     if (onClose) onClose();
     return;
   }
-  const url = urls[Math.floor(Math.random() * urls.length)];
+  const rawUrl = urls[Math.floor(Math.random() * urls.length)];
+  // URL-encode the path so files with spaces (e.g. "mbappe 2.mp4")
+  // resolve correctly.
+  const url = rawUrl.split('/').map(encodeURIComponent).join('/');
+  console.log('[video] playing', url);
   const overlay = document.createElement('div');
   overlay.style.cssText =
     'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:99999;'
