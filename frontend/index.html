@@ -2049,6 +2049,30 @@ async function api(path, method = 'GET', body = null) {
       _handleStaleCareer('forbidden');
       return { error: 'Not your career', _stale: true };
     }
+    // 401 = token invalid / expired. Wipe the cached token and bounce
+    // to the auth screen so the user can log back in (otherwise every
+    // single request returns "Bad token" forever).
+    if (res.status === 401) {
+      console.warn('[api] 401 on', path, '— clearing token and showing login');
+      try {
+        localStorage.removeItem('fm26_token');
+        localStorage.removeItem('fm26_career_id');
+      } catch (_) {}
+      authToken = null;
+      careerId = null;
+      setTimeout(() => {
+        const gh = document.getElementById('game-header');
+        if (gh) gh.style.display = 'none';
+        const gn = document.getElementById('game-nav');
+        if (gn) gn.style.display = 'none';
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const cs = document.getElementById('club-select-screen');
+        if (cs) cs.style.display = 'none';
+        if (typeof showAuthScreen === 'function') showAuthScreen();
+        alert('Сессия истекла. Войди заново.');
+      }, 0);
+      return { error: 'Unauthorized', _auth_expired: true };
+    }
     return await res.json();
   } catch (e) {
     console.error('API error:', e);
