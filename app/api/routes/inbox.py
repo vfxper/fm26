@@ -281,10 +281,11 @@ async def apply_action(
             await db.execute(text(
                 "DELETE FROM squad_players WHERE id = :s AND career_id = :c"
             ), {"s": sp_id, "c": career_id})
-            if to_club:
-                await db.execute(text(
-                    "UPDATE players SET club = :nc WHERE id = :p"
-                ), {"nc": to_club, "p": player_id})
+            # Per-career squad ownership lives in squad_players (we just
+            # deleted that row). DO NOT mutate players.club here — that
+            # column is the shared CSV snapshot, mutating it leaks the
+            # transfer to every OTHER career on the same DB (e.g. another
+            # user manages Real Madrid and suddenly Mbappe is at Vallecano).
             await db.execute(text(
                 "INSERT INTO ai_transfers "
                 "(career_id, player_id, player_name, from_club, to_club, fee, "
@@ -312,10 +313,7 @@ async def apply_action(
                 "UPDATE squad_players SET is_loaned = 1 "
                 "WHERE id = :s AND career_id = :c"
             ), {"s": sp_id, "c": career_id})
-            if to_club:
-                await db.execute(text(
-                    "UPDATE players SET club = :nc WHERE id = :p"
-                ), {"nc": to_club, "p": player_id})
+            # Loan: don't mutate players.club globally either.
             await db.execute(text(
                 "INSERT INTO ai_transfers "
                 "(career_id, player_id, player_name, from_club, to_club, fee, "
@@ -355,7 +353,16 @@ async def apply_action(
         to_club = params.get("to_club") or "Buyer"
         player_id = params.get("player_id")
         player_name = params.get("player_name") or "Игрок"
-        new_ask = int(fee * uniform(1.20, 1.40))
+        # If the user provided a custom price, use that. Otherwise ask
+        # for 20-40% above the AI's offer (legacy behaviour).
+        custom_fee = params.get("custom_fee")
+        if custom_fee is not None:
+            try:
+                new_ask = max(1, int(custom_fee))
+            except Exception:
+                new_ask = int(fee * uniform(1.20, 1.40))
+        else:
+            new_ask = int(fee * uniform(1.20, 1.40))
         if offer_id:
             await db.execute(text(
                 "UPDATE transfer_offers "

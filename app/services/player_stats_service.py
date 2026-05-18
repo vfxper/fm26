@@ -40,42 +40,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ──────────────────────────────────────────────────────────────────────
 
 _GOAL_WEIGHTS = (
-    ("ST", 6.0),    # strikers — primary scorers
-    ("CF", 6.0),
-    ("AM", 4.0),    # attacking mids
+    ("ST", 10.0),   # strikers — primary scorers
+    ("CF", 10.0),
+    ("AM", 4.0),    # attacking mids — half as many as ST
     ("AMC", 4.0),
     ("AMR", 3.5),   # wingers
     ("AML", 3.5),
-    ("MR", 2.0),
-    ("ML", 2.0),
-    ("MC", 1.8),
-    ("DM", 0.7),
-    ("WB", 0.6),
-    ("FB", 0.4),
-    ("CB", 0.5),    # set-piece headers
-    ("DC", 0.5),
-    ("DR", 0.4),
-    ("DL", 0.4),
+    ("MR", 1.5),
+    ("ML", 1.5),
+    ("MC", 1.5),    # central mid — third of AM
+    ("DM", 0.4),
+    ("WB", 0.25),
+    ("FB", 0.2),
+    ("CB", 0.15),   # defenders rarely score (set pieces)
+    ("DC", 0.15),
+    ("DR", 0.15),
+    ("DL", 0.15),
     ("GK", 0.0),    # GKs effectively never score
 )
 
 _ASSIST_WEIGHTS = (
-    ("AM", 5.5),
-    ("AMC", 5.5),
-    ("AMR", 4.5),
-    ("AML", 4.5),
+    ("AM", 6.0),
+    ("AMC", 6.0),
+    ("AMR", 5.0),
+    ("AML", 5.0),
     ("MC", 3.5),
     ("MR", 3.0),
     ("ML", 3.0),
-    ("DM", 2.0),
-    ("ST", 2.5),    # strikers also assist
+    ("DM", 1.5),
+    ("ST", 2.5),
     ("CF", 2.5),
-    ("WB", 1.8),
-    ("FB", 1.4),
-    ("CB", 0.5),
-    ("DC", 0.5),
-    ("DR", 0.5),
-    ("DL", 0.5),
+    ("WB", 1.0),
+    ("FB", 0.7),
+    ("CB", 0.2),
+    ("DC", 0.2),
+    ("DR", 0.2),
+    ("DL", 0.2),
     ("GK", 0.0),
 )
 
@@ -101,11 +101,44 @@ def _position_weight(position: str, table) -> float:
 
 
 async def _get_club_roster(
-    db: AsyncSession, club_name: str, limit: int = 22
+    db: AsyncSession, club_name: str, limit: int = 22,
+    career_id: Optional[int] = None,
 ) -> List[Dict]:
-    """Top-N players for a club ordered by CA. Falls back to CSV alias."""
+    """Top-N players for a club ordered by CA.
+
+    When ``career_id`` is provided we first try to read the live squad
+    from ``squad_players`` joined with ``players``. This is the right
+    source of truth AFTER trades — if the user sold Mbappé, he should
+    not appear in Real Madrid's roster anymore. CSV ``players.club``
+    is only a starting snapshot.
+
+    Falls back to CSV-based lookup (with alias) when the squad table
+    is empty for this club (e.g. AI-vs-AI clubs that aren't in the
+    user's career).
+    """
     if not club_name:
         return []
+    out: List[Dict] = []
+    if career_id is not None:
+        # Live squad from squad_players → players join.
+        rows = await db.execute(
+            text(
+                "SELECT p.id, p.name, p.position, p.ca "
+                "FROM squad_players sp "
+                "JOIN players p ON p.id = sp.player_id "
+                "WHERE sp.career_id = :c AND p.club = :cn "
+                "ORDER BY p.ca DESC LIMIT :n"
+            ),
+            {"c": career_id, "cn": club_name, "n": limit},
+        )
+        out = [
+            {"id": r[0], "name": r[1], "position": r[2] or "", "ca": r[3] or 70}
+            for r in rows.fetchall()
+        ]
+        if out:
+            return out
+
+    # Fall back to CSV-based lookup (snapshot of starting squads).
     rows = await db.execute(
         text(
             "SELECT id, name, position, ca FROM players "
@@ -245,14 +278,24 @@ async def attribute_match_to_players(
     home_score: int,
     away_score: int,
     commit: bool = False,
+    goal_events: Optional[list] = None,
 ) -> Dict:
     """Persist per-player goals/assists/appearances for one match.
+
+    If ``goal_events`` is provided (real scorer/assister data from the
+    match engine), use that. Otherwise fall back to weighted random
+    pick from the rosters (used for AI-vs-AI background sims that
+    don't run the full engine).
+
+    ``goal_events`` shape: list of dicts with keys
+        {"side": "home"|"away", "scorer_id": int|None, "scorer_name": str,
+         "assister_id": int|None, "assister_name": str|None}
 
     Returns a small summary dict with the chosen scorer/assist names so
     callers can pipe them into a match feed if desired.
     """
-    home_roster = await _get_club_roster(db, home_club)
-    away_roster = await _get_club_roster(db, away_club)
+    home_roster = await _get_club_roster(db, home_club, career_id=career_id)
+    away_roster = await _get_club_roster(db, away_club, career_id=career_id)
 
     summary: Dict[str, list] = {"goals": [], "assists": []}
 
@@ -270,7 +313,59 @@ async def attribute_match_to_players(
             season=season, appearance=True,
         )
 
-    # 2. Goals: pick one scorer per goal. Allow same player to score
+    # 2a. Real events path — use the engine's scorers/assisters directly.
+    if goal_events:
+        for ev in goal_events:
+            side = ev.get("side", "home")
+            club = home_club if side == "home" else away_club
+            roster = home_roster if side == "home" else away_roster
+            roster_by_id = {p["id"]: p for p in roster}
+            roster_by_name = {(p["name"] or "").strip().lower(): p for p in roster}
+
+            scorer = None
+            sid = ev.get("scorer_id")
+            if sid and sid in roster_by_id:
+                scorer = roster_by_id[sid]
+            elif ev.get("scorer_name"):
+                key = ev["scorer_name"].strip().lower()
+                scorer = roster_by_name.get(key)
+            if not scorer:
+                continue
+            await _upsert_stats(
+                db, career_id=career_id, player_id=scorer["id"],
+                club_name=club, competition=competition,
+                season=season, goals=1,
+            )
+            summary["goals"].append(
+                {"side": side, "name": scorer["name"], "club": club}
+            )
+
+            assister = None
+            aid = ev.get("assister_id")
+            if aid and aid in roster_by_id:
+                assister = roster_by_id[aid]
+            elif ev.get("assister_name"):
+                key = ev["assister_name"].strip().lower()
+                assister = roster_by_name.get(key)
+            if assister and assister["id"] != scorer["id"]:
+                await _upsert_stats(
+                    db, career_id=career_id, player_id=assister["id"],
+                    club_name=club, competition=competition,
+                    season=season, assists=1,
+                )
+                summary["assists"].append(
+                    {"side": side, "name": assister["name"], "club": club}
+                )
+
+        if commit:
+            try:
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+        return summary
+
+    # 2b. Fallback: random weighted pick (AI-vs-AI background sims).
     #    multiple times — strikers do score braces.
     for side, roster, club, n_goals in (
         ("home", home_roster, home_club, home_score),

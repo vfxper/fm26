@@ -662,6 +662,94 @@ async def advance_day(
     reputation = career_row[5] or 50
     notifications = []
 
+    # ── Transfer-window state-change notification ────────────────────────
+    # Detect transitions of the window status between yesterday and today
+    # and push a single inbox event so the user knows when they can
+    # buy/sell. Window: summer 1-8, winter 26-30.
+    try:
+        from app.services.transfer_window import (
+            TransferWindowService, WindowType,
+        )
+        tws = TransferWindowService()
+        prev_week = ((days_into_season - 1) // 7) + 1 if days_into_season > 0 else 1
+        prev_week = max(1, min(52, prev_week))
+        new_week = max(1, min(52, week))
+        prev_status = tws.get_window_status(prev_week).window_type
+        new_status = tws.get_window_status(new_week).window_type
+        if prev_status != new_status:
+            from app.api.routes.inbox import push_inbox_message
+            if new_status == WindowType.CLOSED:
+                subject = "Трансферное окно закрыто"
+                body = (
+                    "Покупки и продажи теперь невозможны до следующего "
+                    "окна. Свободных агентов и экстренные аренды по-"
+                    "прежнему можно подписать."
+                )
+            elif new_status == WindowType.SUMMER:
+                subject = "Открыто летнее трансферное окно"
+                body = (
+                    "Окно открыто до 8-й недели сезона. Самое время "
+                    "усилить состав — переговоры доступны во вкладке "
+                    "Переговоры."
+                )
+            else:  # WINTER
+                subject = "Открыто зимнее трансферное окно"
+                body = (
+                    "Зимнее окно открыто до 30-й недели сезона. "
+                    "Можно довести состав до нужного баланса перед "
+                    "решающей частью сезона."
+                )
+            try:
+                await push_inbox_message(
+                    db, career_id,
+                    category="news",
+                    subject=subject, body=body, date=str(new_date),
+                )
+                await db.commit()
+                notifications.append(subject)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # ── Loan returns ─────────────────────────────────────────────
+    # Players whose loan has expired (loan_until <= today) come back.
+    # Set is_loaned=0 and inbox-notify the user.
+    try:
+        loan_rows = await db.execute(text(
+            "SELECT sp.id, sp.player_id, p.name "
+            "FROM squad_players sp "
+            "JOIN players p ON p.id = sp.player_id "
+            "WHERE sp.career_id = :c "
+            "  AND COALESCE(sp.is_loaned, 0) = 1 "
+            "  AND sp.loan_until IS NOT NULL "
+            "  AND sp.loan_until <= :d"
+        ), {"c": career_id, "d": str(new_date)})
+        returning = loan_rows.fetchall()
+        if returning:
+            for sp_id, pid, pname in returning:
+                await db.execute(text(
+                    "UPDATE squad_players SET is_loaned = 0, "
+                    "loan_until = NULL WHERE id = :i"
+                ), {"i": sp_id})
+                try:
+                    from app.api.routes.inbox import push_inbox_message
+                    await push_inbox_message(
+                        db, career_id, category="news",
+                        subject=f"{pname} вернулся из аренды",
+                        body=("Срок аренды истёк, игрок снова доступен "
+                              "в составе. Не забудь про матч-готовность."),
+                        date=str(new_date),
+                    )
+                except Exception:
+                    pass
+                notifications.append(f"{pname} вернулся из аренды")
+            await db.commit()
+    except Exception as _e:
+        # Non-fatal — log and move on. Likely loan_until column is missing
+        # on legacy DBs (graceful: ALTER TABLE handled in patch_for_sqlite).
+        pass
+
     # ── AI auto-simulation of background matches ──────────────────────────
     # Each new in-game day, simulate every NON-PLAYER match scheduled on
     # this date so the league/UCL tables stay in sync with the player's

@@ -134,14 +134,15 @@ async def top_scorers(
         params["comp"] = competition
 
     sql = (
-        "SELECT pms.player_id, p.name, p.position, pms.club_name, "
+        "SELECT pms.player_id, p.name, p.position, "
+        "       MAX(pms.club_name) AS club, "
         "       SUM(pms.goals) AS goals, "
         "       SUM(pms.assists) AS assists, "
         "       SUM(pms.appearances) AS apps "
         "FROM player_match_stats pms "
         "LEFT JOIN players p ON p.id = pms.player_id "
         f"WHERE {' AND '.join(where)} "
-        "GROUP BY pms.player_id, p.name, p.position, pms.club_name "
+        "GROUP BY pms.player_id, p.name, p.position "
         "HAVING SUM(pms.goals) > 0 "
         "ORDER BY SUM(pms.goals) DESC, SUM(pms.assists) DESC "
         "LIMIT :lim"
@@ -185,14 +186,15 @@ async def top_assists(
         params["comp"] = competition
 
     sql = (
-        "SELECT pms.player_id, p.name, p.position, pms.club_name, "
+        "SELECT pms.player_id, p.name, p.position, "
+        "       MAX(pms.club_name) AS club, "
         "       SUM(pms.goals) AS goals, "
         "       SUM(pms.assists) AS assists, "
         "       SUM(pms.appearances) AS apps "
         "FROM player_match_stats pms "
         "LEFT JOIN players p ON p.id = pms.player_id "
         f"WHERE {' AND '.join(where)} "
-        "GROUP BY pms.player_id, p.name, p.position, pms.club_name "
+        "GROUP BY pms.player_id, p.name, p.position "
         "HAVING SUM(pms.assists) > 0 "
         "ORDER BY SUM(pms.assists) DESC, SUM(pms.goals) DESC "
         "LIMIT :lim"

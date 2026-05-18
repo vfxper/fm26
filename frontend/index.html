@@ -771,13 +771,13 @@ select.form-input { appearance: none; -webkit-appearance: none; background-image
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div>
-          <h3 style="font-size:13px;color:#c4b5fd;margin:0 0 8px">⚽ Бомбардиры</h3>
+          <h3 style="font-size:13px;color:#c4b5fd;margin:0 0 8px">Бомбардиры</h3>
           <div id="stats-scorers" style="background:#0d0a17;border-radius:8px;padding:8px;min-height:200px">
             <p style="color:#8b86a3;font-size:12px">Нет данных</p>
           </div>
         </div>
         <div>
-          <h3 style="font-size:13px;color:#c4b5fd;margin:0 0 8px">🅰️ Ассистенты</h3>
+          <h3 style="font-size:13px;color:#c4b5fd;margin:0 0 8px">Ассистенты</h3>
           <div id="stats-assists" style="background:#0d0a17;border-radius:8px;padding:8px;min-height:200px">
             <p style="color:#8b86a3;font-size:12px">Нет данных</p>
           </div>
@@ -1734,10 +1734,31 @@ async function applyInboxAction(messageId, actionIndex) {
   }
   const a = payload.actions[actionIndex];
   if (!a) return;
+  // Special-case the "Запросить больше" action — let the user enter
+  // their own counter price instead of using the engine's auto-bump.
+  let extraParams = {};
+  if (a.id === 'counter_incoming_offer') {
+    const currentFee = (a.params && a.params.fee) || 0;
+    const playerName = (a.params && a.params.player_name) || 'игрок';
+    const suggested = Math.round(currentFee * 1.30);
+    const raw = prompt(
+      `Запросить свою цену за ${playerName}\n\n` +
+      `Текущее предложение: €${_fmt(currentFee)}\n` +
+      `Введите сумму в евро (например 250000000):`,
+      String(suggested)
+    );
+    if (raw === null) return;  // user cancelled
+    const num = parseInt(String(raw).replace(/[^0-9]/g, ''), 10);
+    if (!num || num < 100_000) {
+      alert('Цена слишком низкая. Минимум €100 000.');
+      return;
+    }
+    extraParams = { custom_fee: num };
+  }
   try {
     await api(`/careers/${careerId}/inbox/${messageId}/action`, 'POST', {
       action_id: a.id,
-      params: a.params || {},
+      params: { ...(a.params || {}), ...extraParams },
     });
     document.getElementById('generic-modal')?.classList.remove('open');
     // Refresh everything that the action might have changed: inbox,
@@ -2028,6 +2049,30 @@ async function api(path, method = 'GET', body = null) {
       _handleStaleCareer('forbidden');
       return { error: 'Not your career', _stale: true };
     }
+    // 401 = token invalid / expired. Wipe the cached token and bounce
+    // to the auth screen so the user can log back in (otherwise every
+    // single request returns "Bad token" forever).
+    if (res.status === 401) {
+      console.warn('[api] 401 on', path, '— clearing token and showing login');
+      try {
+        localStorage.removeItem('fm26_token');
+        localStorage.removeItem('fm26_career_id');
+      } catch (_) {}
+      authToken = null;
+      careerId = null;
+      setTimeout(() => {
+        const gh = document.getElementById('game-header');
+        if (gh) gh.style.display = 'none';
+        const gn = document.getElementById('game-nav');
+        if (gn) gn.style.display = 'none';
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const cs = document.getElementById('club-select-screen');
+        if (cs) cs.style.display = 'none';
+        if (typeof showAuthScreen === 'function') showAuthScreen();
+        alert('Сессия истекла. Войди заново.');
+      }, 0);
+      return { error: 'Unauthorized', _auth_expired: true };
+    }
     return await res.json();
   } catch (e) {
     console.error('API error:', e);
@@ -2077,6 +2122,13 @@ function _formatGameDate(iso) {
 }
 
 async function advanceDay() {
+  // While the pre-match gate is active, the underlying screen still
+  // shows the header "Continue" button. Pressing it here would loop
+  // back into the match-day modal forever. Block until the gate is
+  // resolved.
+  if (window._prematchActive) {
+    return;
+  }
   const data = await api(`/careers/${careerId}/advance-day`, 'POST');
   if (data && data.season) {
     const newDate = data.game_date || data.current_date;
@@ -2934,7 +2986,18 @@ async function searchPlayers() {
   params.append('order_by', 'ca');
 
   const data = await api(`/players/search?${params.toString()}`);
+  // Pull current squad to mark + filter out already-owned players.
+  let ownedIds = new Set();
+  try {
+    const sq = await api(`/careers/${careerId}/squad`);
+    for (const p of (sq?.squad || [])) {
+      ownedIds.add(p.player_id || p.id);
+    }
+  } catch (_) {}
   if (data.players && data.players.length > 0) {
+    // Drop players already in our squad to avoid the "I bought Yamal
+    // and can buy him again" bug.
+    data.players = data.players.filter(p => !ownedIds.has(p.id || p.uid));
     let html = '<table class="squad-table"><tr><th>Имя</th><th>Поз</th><th>Клуб</th><th>Возр</th><th>CA</th><th>PA</th><th>Действие</th></tr>';
     for (const p of data.players) {
       const pid = p.id || p.uid;
@@ -3343,6 +3406,13 @@ async function autoBestXI() {
       // wide defender (D:R / D:L) unless they ALSO list D:C.
       if (nZone === "D" && nSide === "C" && pZone === "D" && pSide !== "C") continue;
       if (nZone === "D" && nSide !== "C" && pZone === "D" && pSide === "C") continue;
+      // Block defender → midfielder (CB on M:C is FM2024 nightmare).
+      if (nZone === "M" && pZone === "D") continue;
+      // Block midfielder → defender (CM on CB).
+      if (nZone === "D" && pZone === "M") continue;
+      // Block keeper → outfield and outfield → keeper (already handled
+      // earlier, but keep defensive).
+      if (nZone === "GK" || pZone === "GK") continue;
       // Wide attackers (AM:L/R) on ST:C — only via direct match handled
       // above. Here we require zone-distance ≤ 1 and side-distance ≤ 1.
       if (dz > 1) continue;
@@ -3382,8 +3452,11 @@ async function autoBestXI() {
       if (used.has(p.player_id)) continue;
       const compat = compatScore(p.position, need);
       if (compat < 0) continue;
-      // Position is hard-gated. CA only breaks ties.
-      const score = compat * 1000 + (p.ca || 0);
+      // Position is hard-gated. Within compatible candidates, CA matters
+      // more: a CA-185 winger on AM:L beats a CA-130 ML who exact-fits.
+      // Multiplier 100 keeps position dominant for major mismatches
+      // (compat 30 vs 100 = 7000 gap = 70 CA points to override).
+      const score = compat * 100 + (p.ca || 0);
       if (score > bestScore) { bestScore = score; best = p; }
     }
     if (best) {
@@ -3425,13 +3498,22 @@ async function saveTacticsToServer() {
   console.log('[saveTactics] sending payload:', payload);
   try {
     // Use raw fetch so we see the real status code on error.
+    const _hdrs = {'Content-Type': 'application/json'};
+    if (authToken && authToken !== 'guest' && authToken !== 'registered') {
+      _hdrs['Authorization'] = `Bearer ${authToken}`;
+    }
     const res = await fetch(API + `/careers/${careerId}/tactics`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: _hdrs,
       body: JSON.stringify(payload),
     });
     const r = await res.json();
     console.log('[saveTactics] status', res.status, 'response', r);
+    // 403 = career belongs to another user → reset and bounce.
+    if (res.status === 403) {
+      _handleStaleCareer('forbidden');
+      return;
+    }
     if (res.ok && r && r.success) {
       const btn = document.querySelector('button[onclick="saveTacticsToServer()"]');
       if (btn) {
@@ -3596,6 +3678,7 @@ async function submitOffer(playerId, isLoan) {
     document.getElementById('generic-modal')?.classList.remove('open');
     if (r.success) {
       const fmt = isLoan ? 'арендован' : `куплен за £${_fmt(fee)}`;
+      _maybeShowSigningVideo(playerId, r);
       alert(`Предложение принято. Игрок ${fmt}.`);
       if (typeof loadSquad === 'function') loadSquad();
       if (typeof refreshHomeStats === 'function') refreshHomeStats();
@@ -3614,6 +3697,7 @@ async function submitOffer(playerId, isLoan) {
           ...body, fee: cf,
         }).then(r2 => {
           if (r2.success) {
+            _maybeShowSigningVideo(playerId, r2);
             alert(`Принято. Игрок куплен за £${_fmt(cf)}.`);
             if (typeof loadSquad === 'function') loadSquad();
             if (typeof refreshHomeStats === 'function') refreshHomeStats();
@@ -3925,9 +4009,9 @@ function _renderStatsTable(hostId, items, primary) {
           <th style="padding:6px 8px;width:28px">#</th>
           <th style="padding:6px 8px">Игрок</th>
           <th style="padding:6px 8px">Клуб</th>
-          <th style="padding:6px 8px;text-align:center;width:36px">⚽</th>
-          <th style="padding:6px 8px;text-align:center;width:36px">🅰</th>
-          <th style="padding:6px 8px;text-align:center;width:36px">М</th>
+          <th style="padding:6px 8px;text-align:center;width:36px" title="Голы">Г</th>
+          <th style="padding:6px 8px;text-align:center;width:36px" title="Ассисты">А</th>
+          <th style="padding:6px 8px;text-align:center;width:36px" title="Матчи">М</th>
         </tr>
       </thead>
       <tbody>
@@ -4583,6 +4667,8 @@ async function _ensureLineupSet() {
 //   - "Отмена" resolves false (caller should abort starting the match)
 function _openPreMatchGate(xiCount) {
   return new Promise(resolve => {
+    // Mark gate as active so the header Continue button stops working.
+    window._prematchActive = true;
     // First: switch to the tactics screen so the user can edit.
     if (typeof showScreen === 'function') showScreen('tactics');
 
@@ -4650,6 +4736,7 @@ function _openPreMatchGate(xiCount) {
       document.body.style.paddingTop = '';
       window._prematchCancel = null;
       window._prematchConfirm = null;
+      window._prematchActive = false;
       resolve(result);
     }
 
@@ -5057,7 +5144,156 @@ function _filterMatchTimeline(events) {
   return out;
 }
 
+// === PLAYER VIDEO TRIGGERS ===
+// Map scorer/signing name → list of clip URLs. Random one is chosen
+// each time. Names are normalised (lowercase, no diacritics) so
+// "Mbappé", "MBAPPE", "kylian mbappé" all hit the same bucket.
+const _PLAYER_VIDEOS = {
+  "haaland":  ["assets/haaland.MP4", "assets/haaland 2.mp4", "assets/haaland 3.mp4"],
+  "erling haaland": ["assets/haaland.MP4", "assets/haaland 2.mp4", "assets/haaland 3.mp4"],
+  "mbappe":   ["assets/mbappe.mp4", "assets/mbappe 2.mp4", "assets/mbappe 3.mp4"],
+  "kylian mbappe": ["assets/mbappe.mp4", "assets/mbappe 2.mp4", "assets/mbappe 3.mp4"],
+  "vinicius": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "vinicius junior": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "vinicius jr": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "vinicius jr.": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "yamal":    ["assets/yamal.mp4", "assets/yamal 2.mp4", "assets/yamal 3.mp4"],
+  "lamine yamal": ["assets/yamal.mp4", "assets/yamal 2.mp4", "assets/yamal 3.mp4"],
+  "dembele":  ["assets/dembele.mp4", "assets/dembele 2.mp4", "assets/dembele 3.mp4"],
+  "ousmane dembele": ["assets/dembele.mp4", "assets/dembele 2.mp4", "assets/dembele 3.mp4"],
+};
+
+function _normaliseName(s) {
+  if (!s) return "";
+  return String(s)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function _resolveVideoForPlayer(name) {
+  const key = _normaliseName(name);
+  if (!key) return null;
+  if (_PLAYER_VIDEOS[key]) return _PLAYER_VIDEOS[key];
+  for (const k of Object.keys(_PLAYER_VIDEOS)) {
+    if (key.endsWith(k) || key.includes(k)) return _PLAYER_VIDEOS[k];
+  }
+  return null;
+}
+
+function _pluralGoals(n) {
+  const mod10 = n % 10, mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "гол";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "гола";
+  return "голов";
+}
+
+function _extractScorerFromDescription(desc) {
+  if (!desc) return null;
+  // Russian engine: "⚽ Гол! NAME забивает за CLUB!"
+  const m = /Гол!\s*([^!]+?)\s*забивает/i.exec(desc);
+  if (m) return m[1].trim();
+  const m2 = /GOAL!\s*([^!]+?)\s*scores/i.exec(desc);
+  if (m2) return m2[1].trim();
+  return null;
+}
+
+function _maybeShowSigningVideo(playerId, response) {
+  let name = null;
+  if (response) {
+    if (response.player && response.player.name) name = response.player.name;
+    else if (response.player_name) name = response.player_name;
+  }
+  // Try local _squadCache (array) and global window._squadCache.rows.
+  if (!name) {
+    const arr = (typeof _squadCache !== 'undefined' && Array.isArray(_squadCache))
+      ? _squadCache : null;
+    const winRows = (window._squadCache && window._squadCache.rows) || null;
+    const candidates = arr || winRows || [];
+    const p = candidates.find(p => p.id === playerId || p.player_id === playerId);
+    if (p) name = p.name;
+  }
+  if (!name) return;
+  if (!_resolveVideoForPlayer(name)) return;
+  setTimeout(() => {
+    _showPlayerVideo(name, `Поздравляем с подписанием ${name}!`, () => {
+      const ok = confirm(
+        `${name} в команде!\n\nХочешь сразу назначить тренировочную роль?`
+      );
+      if (ok && typeof showScreen === 'function') {
+        showScreen('training');
+      }
+    });
+  }, 200);
+}
+
+function _showPlayerVideo(name, captionText, onClose) {
+  const urls = _resolveVideoForPlayer(name);
+  if (!urls || !urls.length) {
+    if (onClose) onClose();
+    return;
+  }
+  const url = urls[Math.floor(Math.random() * urls.length)];
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:99999;'
+    + 'display:flex;align-items:center;justify-content:center;flex-direction:column;'
+    + 'padding:14px';
+  overlay.innerHTML = `
+    <button id="_pv_skip" style="position:absolute;top:14px;right:14px;
+        background:#7c3aed;color:#fff;border:0;padding:10px 18px;border-radius:8px;
+        cursor:pointer;font-size:14px;font-weight:600">Пропустить</button>
+    <div style="color:#fff;font-size:22px;font-weight:700;margin-bottom:14px;text-align:center;
+        text-shadow:0 2px 6px rgba(0,0,0,0.8)">${captionText.replace(/</g,'&lt;')}</div>
+    <video id="_pv_video" autoplay playsinline controls
+           style="max-width:96vw;max-height:80vh;border-radius:12px;
+                  box-shadow:0 20px 60px rgba(0,0,0,0.6)">
+      <source src="${url}" type="video/mp4">
+    </video>
+  `;
+  document.body.appendChild(overlay);
+  const cleanup = () => {
+    try { overlay.remove(); } catch {}
+    if (onClose) onClose();
+  };
+  overlay.querySelector('#_pv_skip').onclick = cleanup;
+  const vid = overlay.querySelector('#_pv_video');
+  vid.onended = cleanup;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) cleanup();
+  });
+}
+
 function showMatchResult(data) {
+  // Hat-trick / video trigger: scan for goals scored by THIS user's
+  // squad, count per scorer name, and if anyone has a video clip
+  // mapped, play it BEFORE showing the result modal so the moment
+  // hits while the score is still hidden.
+  try {
+    const myTeam = data.player_team || data.user_team;
+    const events = Array.isArray(data.events) ? data.events : [];
+    const goalsByScorer = {};
+    for (const ev of events) {
+      const desc = (ev.description || '').toLowerCase();
+      const isGoal = desc.includes('гол') || desc.includes('забива') || ev.event_type === 'goal';
+      if (!isGoal) continue;
+      const isMyTeam = (ev.team === myTeam) || (ev.team === 'home' && data.home_is_player) || (ev.team === 'away' && !data.home_is_player);
+      const name = ev.player_name || ev.player || _extractScorerFromDescription(ev.description);
+      if (!name) continue;
+      // Only count goals by player's own team. Without team metadata we
+      // fall back to scanning all goals so videos still trigger.
+      const key = name.trim();
+      goalsByScorer[key] = (goalsByScorer[key] || 0) + 1;
+    }
+    for (const [name, count] of Object.entries(goalsByScorer)) {
+      if (count >= 3 && _resolveVideoForPlayer(name)) {
+        _showPlayerVideo(name, `${name} забил ${count} ${_pluralGoals(count)}!`, () => {});
+        break;  // one video per match
+      }
+    }
+  } catch (_) {}
+
   const filtered = _filterMatchTimeline(data.events || []);
   const eventsList = filtered.map(e =>
     `<div style="padding:6px 10px;border-bottom:1px solid #1a2634;font-size:12px">

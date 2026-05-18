@@ -811,6 +811,21 @@ async def simulate_match_event(
                     lg = ALL_CLUBS[ccid - 1][3]  # (name, scout, transfer, league)
             comp_label = f"league:{lg}" if lg else "league:?"
             season = int(club_row[1]) if club_row and club_row[1] else 1
+            # Build goal_events from real engine MatchEvent stream so the
+            # stats table gets the actual scorers.
+            goal_events_list = []
+            try:
+                for ev in (match_result.events or []):
+                    if getattr(ev, "event_type", None) == "goal":
+                        goal_events_list.append({
+                            "side": getattr(ev, "team", "home") or "home",
+                            "scorer_id": None,
+                            "scorer_name": getattr(ev, "player_name", None) or "",
+                            "assister_id": None,
+                            "assister_name": None,
+                        })
+            except Exception:
+                goal_events_list = []
             await attribute_match_to_players(
                 db,
                 career_id=career_id,
@@ -821,6 +836,7 @@ async def simulate_match_event(
                 home_score=match_result.home_score,
                 away_score=match_result.away_score,
                 commit=False,
+                goal_events=goal_events_list or None,
             )
         except Exception:
             pass

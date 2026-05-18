@@ -308,6 +308,25 @@ async def resume_match(
     try:
         from app.services.player_stats_service import attribute_match_to_players
         from app.data.club_budgets import CLUBS as ALL_CLUBS
+        # Build goal_events from real engine MatchEvent stream so the
+        # stats table gets the actual scorers (instead of a weighted
+        # random pick). Each MatchEvent has player_name + team
+        # ("home"/"away"); the engine doesn't currently track assists
+        # so we leave assister fields blank — the service can still
+        # pick an assister from the roster as fallback.
+        goal_events_list = []
+        try:
+            for ev in (result.events or []):
+                if getattr(ev, "event_type", None) == "goal":
+                    goal_events_list.append({
+                        "side": getattr(ev, "team", "home") or "home",
+                        "scorer_id": None,
+                        "scorer_name": getattr(ev, "player_name", None) or "",
+                        "assister_id": None,
+                        "assister_name": None,
+                    })
+        except Exception:
+            goal_events_list = []
         # Read event metadata to figure out competition.
         ev = (await db.execute(text(
             "SELECT event_type, competition_id, description "
@@ -346,6 +365,7 @@ async def resume_match(
             home_score=result.home_score,
             away_score=result.away_score,
             commit=False,
+            goal_events=goal_events_list or None,
         )
     except Exception as e:  # noqa: BLE001
         # Stats are nice-to-have — never block match completion on them.
