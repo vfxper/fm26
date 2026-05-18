@@ -380,10 +380,10 @@ async def run_daily_ai_transfers(
             # left alone unless they're young (under 23 = potential).
             if ca < 130 and (age or 30) >= 23:
                 continue
-            # Per-player chance per day. Tuned WAY down — beta-testers
-            # complained "Too many transfer offers". Halved from the
-            # previous 0.005/0.012/0.020 tier.
-            base_prob = 0.0015 if ca < 145 else 0.004 if ca < 165 else 0.008
+            # Per-player chance per day. After more beta feedback
+            # ("спам предложениями") tuning down again — was 0.0015/
+            # 0.004/0.008. Now ~5x rarer for mid-CA stars.
+            base_prob = 0.0006 if ca < 145 else 0.0015 if ca < 165 else 0.004
             if random.random() > base_prob:
                 continue
             buyer_pool = [c[0] for c in CLUBS if c[0] != player_club_name]

@@ -1734,10 +1734,31 @@ async function applyInboxAction(messageId, actionIndex) {
   }
   const a = payload.actions[actionIndex];
   if (!a) return;
+  // Special-case the "Запросить больше" action — let the user enter
+  // their own counter price instead of using the engine's auto-bump.
+  let extraParams = {};
+  if (a.id === 'counter_incoming_offer') {
+    const currentFee = (a.params && a.params.fee) || 0;
+    const playerName = (a.params && a.params.player_name) || 'игрок';
+    const suggested = Math.round(currentFee * 1.30);
+    const raw = prompt(
+      `Запросить свою цену за ${playerName}\n\n` +
+      `Текущее предложение: €${_fmt(currentFee)}\n` +
+      `Введите сумму в евро (например 250000000):`,
+      String(suggested)
+    );
+    if (raw === null) return;  // user cancelled
+    const num = parseInt(String(raw).replace(/[^0-9]/g, ''), 10);
+    if (!num || num < 100_000) {
+      alert('Цена слишком низкая. Минимум €100 000.');
+      return;
+    }
+    extraParams = { custom_fee: num };
+  }
   try {
     await api(`/careers/${careerId}/inbox/${messageId}/action`, 'POST', {
       action_id: a.id,
-      params: a.params || {},
+      params: { ...(a.params || {}), ...extraParams },
     });
     document.getElementById('generic-modal')?.classList.remove('open');
     // Refresh everything that the action might have changed: inbox,

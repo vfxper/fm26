@@ -101,11 +101,44 @@ def _position_weight(position: str, table) -> float:
 
 
 async def _get_club_roster(
-    db: AsyncSession, club_name: str, limit: int = 22
+    db: AsyncSession, club_name: str, limit: int = 22,
+    career_id: Optional[int] = None,
 ) -> List[Dict]:
-    """Top-N players for a club ordered by CA. Falls back to CSV alias."""
+    """Top-N players for a club ordered by CA.
+
+    When ``career_id`` is provided we first try to read the live squad
+    from ``squad_players`` joined with ``players``. This is the right
+    source of truth AFTER trades — if the user sold Mbappé, he should
+    not appear in Real Madrid's roster anymore. CSV ``players.club``
+    is only a starting snapshot.
+
+    Falls back to CSV-based lookup (with alias) when the squad table
+    is empty for this club (e.g. AI-vs-AI clubs that aren't in the
+    user's career).
+    """
     if not club_name:
         return []
+    out: List[Dict] = []
+    if career_id is not None:
+        # Live squad from squad_players → players join.
+        rows = await db.execute(
+            text(
+                "SELECT p.id, p.name, p.position, p.ca "
+                "FROM squad_players sp "
+                "JOIN players p ON p.id = sp.player_id "
+                "WHERE sp.career_id = :c AND p.club = :cn "
+                "ORDER BY p.ca DESC LIMIT :n"
+            ),
+            {"c": career_id, "cn": club_name, "n": limit},
+        )
+        out = [
+            {"id": r[0], "name": r[1], "position": r[2] or "", "ca": r[3] or 70}
+            for r in rows.fetchall()
+        ]
+        if out:
+            return out
+
+    # Fall back to CSV-based lookup (snapshot of starting squads).
     rows = await db.execute(
         text(
             "SELECT id, name, position, ca FROM players "
@@ -261,8 +294,8 @@ async def attribute_match_to_players(
     Returns a small summary dict with the chosen scorer/assist names so
     callers can pipe them into a match feed if desired.
     """
-    home_roster = await _get_club_roster(db, home_club)
-    away_roster = await _get_club_roster(db, away_club)
+    home_roster = await _get_club_roster(db, home_club, career_id=career_id)
+    away_roster = await _get_club_roster(db, away_club, career_id=career_id)
 
     summary: Dict[str, list] = {"goals": [], "assists": []}
 

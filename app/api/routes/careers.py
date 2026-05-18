@@ -662,6 +662,56 @@ async def advance_day(
     reputation = career_row[5] or 50
     notifications = []
 
+    # ── Transfer-window state-change notification ────────────────────────
+    # Detect transitions of the window status between yesterday and today
+    # and push a single inbox event so the user knows when they can
+    # buy/sell. Window: summer 1-8, winter 26-30.
+    try:
+        from app.services.transfer_window import (
+            TransferWindowService, WindowType,
+        )
+        tws = TransferWindowService()
+        prev_week = ((days_into_season - 1) // 7) + 1 if days_into_season > 0 else 1
+        prev_week = max(1, min(52, prev_week))
+        new_week = max(1, min(52, week))
+        prev_status = tws.get_window_status(prev_week).window_type
+        new_status = tws.get_window_status(new_week).window_type
+        if prev_status != new_status:
+            from app.api.routes.inbox import push_inbox_message
+            if new_status == WindowType.CLOSED:
+                subject = "Трансферное окно закрыто"
+                body = (
+                    "Покупки и продажи теперь невозможны до следующего "
+                    "окна. Свободных агентов и экстренные аренды по-"
+                    "прежнему можно подписать."
+                )
+            elif new_status == WindowType.SUMMER:
+                subject = "Открыто летнее трансферное окно"
+                body = (
+                    "Окно открыто до 8-й недели сезона. Самое время "
+                    "усилить состав — переговоры доступны во вкладке "
+                    "Переговоры."
+                )
+            else:  # WINTER
+                subject = "Открыто зимнее трансферное окно"
+                body = (
+                    "Зимнее окно открыто до 30-й недели сезона. "
+                    "Можно довести состав до нужного баланса перед "
+                    "решающей частью сезона."
+                )
+            try:
+                await push_inbox_message(
+                    db, career_id,
+                    category="news",
+                    subject=subject, body=body, date=str(new_date),
+                )
+                await db.commit()
+                notifications.append(subject)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # ── AI auto-simulation of background matches ──────────────────────────
     # Each new in-game day, simulate every NON-PLAYER match scheduled on
     # this date so the league/UCL tables stay in sync with the player's

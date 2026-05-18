@@ -355,7 +355,16 @@ async def apply_action(
         to_club = params.get("to_club") or "Buyer"
         player_id = params.get("player_id")
         player_name = params.get("player_name") or "Игрок"
-        new_ask = int(fee * uniform(1.20, 1.40))
+        # If the user provided a custom price, use that. Otherwise ask
+        # for 20-40% above the AI's offer (legacy behaviour).
+        custom_fee = params.get("custom_fee")
+        if custom_fee is not None:
+            try:
+                new_ask = max(1, int(custom_fee))
+            except Exception:
+                new_ask = int(fee * uniform(1.20, 1.40))
+        else:
+            new_ask = int(fee * uniform(1.20, 1.40))
         if offer_id:
             await db.execute(text(
                 "UPDATE transfer_offers "
