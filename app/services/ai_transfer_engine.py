@@ -366,12 +366,13 @@ async def run_daily_ai_transfers(
             "  AND COALESCE(sp.is_loaned, 0) = 0"
         ), {"c": career_id})
         rows = unlisted.fetchall()
-        # We DON'T want a flood — at most 2 unsolicited bids per day.
-        # Higher CA players attract more interest.
+        # We DON'T want a flood — at most 1 unsolicited bid per day
+        # (was 2). Higher CA players still attract more interest via
+        # the per-player probability below.
         candidates = sorted(rows, key=lambda r: -(r[3] or 0))
         bids_today = 0
         for r in candidates:
-            if bids_today >= 2:
+            if bids_today >= 1:
                 break
             sp_id, pid, pname, ca, age, wage, pos = r
             ca = ca or 0
@@ -379,9 +380,10 @@ async def run_daily_ai_transfers(
             # left alone unless they're young (under 23 = potential).
             if ca < 130 and (age or 30) >= 23:
                 continue
-            # Per-player chance per day. Tuned down — was 0.015–0.050
-            # which gave 25+ offers per ManCity squad over a window.
-            base_prob = 0.005 if ca < 145 else 0.012 if ca < 165 else 0.020
+            # Per-player chance per day. Tuned WAY down — beta-testers
+            # complained "Too many transfer offers". Halved from the
+            # previous 0.005/0.012/0.020 tier.
+            base_prob = 0.0015 if ca < 145 else 0.004 if ca < 165 else 0.008
             if random.random() > base_prob:
                 continue
             buyer_pool = [c[0] for c in CLUBS if c[0] != player_club_name]

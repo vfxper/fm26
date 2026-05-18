@@ -153,7 +153,35 @@ class UCLGenerator:
         )
         existing_id = existing.scalar()
         if existing_id is not None:
-            return int(existing_id)
+            # Competition shell exists (created by another user's career).
+            # We still need to insert THIS career's player calendar_events
+            # so they see UCL fixtures. The 144 hidden phase matchups are
+            # shared across careers (set in ucl_phase_matchups), but the
+            # 8 player-visible UCL events live in calendar_events
+            # WHERE career_id = THIS user's career.
+            comp_id = int(existing_id)
+            # Check if this career already has UCL calendar events.
+            already = await self.session.execute(
+                text(
+                    "SELECT 1 FROM calendar_events "
+                    "WHERE career_id = :cid AND competition_id = :comp "
+                    "LIMIT 1"
+                ),
+                {"cid": career_id, "comp": comp_id},
+            )
+            if already.fetchone() is not None:
+                return comp_id  # this career also already has events
+            # Otherwise re-build the player's calendar from existing data.
+            try:
+                await self._regenerate_player_calendar_for_existing(
+                    competition_id=comp_id,
+                    career_id=career_id,
+                    player_club_id=player_club_id,
+                    year=year,
+                )
+            except Exception as _e:
+                print(f"  UCL re-calendar warning: {_e}")
+            return comp_id
 
         # 2. Insert competitions row.
         await self.session.execute(
@@ -298,6 +326,51 @@ class UCLGenerator:
 
         await self.session.commit()
         return competition_id
+
+    async def _regenerate_player_calendar_for_existing(
+        self,
+        *,
+        competition_id: int,
+        career_id: int,
+        player_club_id: Optional[int],
+        year: int,
+    ) -> None:
+        """When a UCL competition already exists (created by another user's
+        career), this builds the 8 player-visible UCL calendar events for
+        a new career joining the same season. We DO NOT re-shuffle the
+        Swiss pairings — those were committed by the first career and are
+        shared. We just look up the matchups from `ucl_phase_matchups`
+        and pick player's calendar dates around them.
+        """
+        # Pull the pairings as 8 lists of (home_pid, away_pid).
+        rows = await self.session.execute(
+            text(
+                "SELECT matchday, home_participant_id, away_participant_id "
+                "FROM ucl_phase_matchups WHERE competition_id = :c "
+                "ORDER BY matchday, id"
+            ),
+            {"c": competition_id},
+        )
+        pairings: List[List[Tuple[int, int]]] = [[] for _ in range(8)]
+        for md, h, a in rows.fetchall():
+            md = int(md)
+            if 1 <= md <= 8:
+                pairings[md - 1].append((int(h), int(a)))
+        if not all(pairings):
+            print("  UCL re-calendar: incomplete matchups, skipping")
+            return
+        # Resolve dates the same way generate_competition does.
+        dates = self.assign_matchdays_to_dates(
+            pairings, year, blocked_ranges=[]
+        )
+        await self._insert_league_phase_events(
+            career_id=career_id,
+            competition_id=competition_id,
+            pairings=pairings,
+            dates=dates,
+            player_club_id=player_club_id,
+        )
+        await self.session.commit()
 
     # ─── Helpers ──────────────────────────────────────────────────────────
 
