@@ -196,6 +196,15 @@ def _halftime_response(state: dict, event_id: int) -> dict:
         "subs_made": state.get("subs_made", {"home": 0, "away": 0}),
         "subs_allowed": 5,
         "player_team": player_team,
+        # Formation name (4-3-3 etc) so the frontend can render the same
+        # pitch layout users see on the tactics screen.
+        "formation": state.get("home_formation" if is_player_home else "away_formation")
+                     or state.get("formation")
+                     or "4-3-3",
+        # starting_xi: {slot_code -> player_id} mirrors what the tactics
+        # screen sends. Lets the frontend place each starter on the
+        # correct formation slot (CB, LM, ST, ...).
+        "starting_xi": state.get("home_starting_xi" if is_player_home else "away_starting_xi") or {},
         "starters": starters,
         "bench": bench,
         "events": events,
@@ -292,6 +301,56 @@ async def resume_match(
     await db.execute(text(
         "DELETE FROM match_sessions WHERE id = :i"
     ), {"i": sess["id"]})
+
+    # Attribute goals/assists/appearances to actual players so the
+    # stats screen shows real names. Detect competition from the
+    # calendar event payload (UCL / league / cup).
+    try:
+        from app.services.player_stats_service import attribute_match_to_players
+        from app.data.club_budgets import CLUBS as ALL_CLUBS
+        # Read event metadata to figure out competition.
+        ev = (await db.execute(text(
+            "SELECT event_type, competition_id, description "
+            "FROM calendar_events WHERE id = :e"
+        ), {"e": event_id})).fetchone()
+        comp_label = "league:?"
+        if ev:
+            etype = (ev[0] or "").lower()
+            if etype in ("ucl", "ucl_match"):
+                comp_label = "ucl"
+            elif etype in ("uel", "uel_match"):
+                comp_label = "uel"
+            elif etype in ("uecl", "uecl_match"):
+                comp_label = "uecl"
+            elif etype in ("league_match", "match"):
+                club_row = (await db.execute(text(
+                    "SELECT club_id FROM careers WHERE id = :c"
+                ), {"c": career_id})).fetchone()
+                if club_row and club_row[0]:
+                    ccid = int(club_row[0])
+                    if 1 <= ccid <= len(ALL_CLUBS):
+                        lg = ALL_CLUBS[ccid - 1][3]
+                        if lg:
+                            comp_label = f"league:{lg}"
+        season_row = (await db.execute(text(
+            "SELECT current_season FROM careers WHERE id = :c"
+        ), {"c": career_id})).fetchone()
+        season = int(season_row[0]) if season_row and season_row[0] else 1
+        await attribute_match_to_players(
+            db,
+            career_id=career_id,
+            season=season,
+            competition=comp_label,
+            home_club=state.get("home_club_name", ""),
+            away_club=state.get("away_club_name", ""),
+            home_score=result.home_score,
+            away_score=result.away_score,
+            commit=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        # Stats are nice-to-have — never block match completion on them.
+        print(f"  stats attribution warning: {e}")
+
     await db.commit()
 
     return {

@@ -402,22 +402,20 @@ class MatchEngine:
                         events.append(MatchEvent(
                             minute=minute, event_type="goal", team="home",
                             player_name=scorer["name"],
-                            description=f"⚽ {scorer['name']} scores for {home_club_name}!",
+                            description=f"⚽ Гол! {scorer['name']} забивает за {home_club_name}!",
                         ))
                     else:
-                        gk = self._pick_goalkeeper(away_players)
-                        events.append(MatchEvent(
-                            minute=minute, event_type="save", team="away",
-                            player_name=gk["name"],
-                            description=f"🧤 Save by {gk['name']}",
-                        ))
-                else:
-                    shooter = self._pick_outfield(home_players)
-                    events.append(MatchEvent(
-                        minute=minute, event_type="miss", team="home",
-                        player_name=shooter["name"],
-                        description=f"❌ {shooter['name']}'s shot goes wide",
-                    ))
+                        # Save: emit only ~30% of the time so the
+                        # timeline isn't dominated by routine GK work.
+                        if random.random() < 0.30:
+                            gk = self._pick_goalkeeper(away_players)
+                            events.append(MatchEvent(
+                                minute=minute, event_type="save", team="away",
+                                player_name=gk["name"],
+                                description=f"🧤 Сейв: {gk['name']}",
+                            ))
+                # Wide shots are almost always noise. Drop them entirely
+                # from the timeline — keep them only in shots count.
 
             # Away shot.
             if random.random() < 0.05 * (away_strength / 100) * away_shot_mult * away_ff:
@@ -430,22 +428,17 @@ class MatchEngine:
                         events.append(MatchEvent(
                             minute=minute, event_type="goal", team="away",
                             player_name=scorer["name"],
-                            description=f"⚽ {scorer['name']} scores for {away_club_name}!",
+                            description=f"⚽ Гол! {scorer['name']} забивает за {away_club_name}!",
                         ))
                     else:
-                        gk = self._pick_goalkeeper(home_players)
-                        events.append(MatchEvent(
-                            minute=minute, event_type="save", team="home",
-                            player_name=gk["name"],
-                            description=f"🧤 Save by {gk['name']}",
-                        ))
-                else:
-                    shooter = self._pick_outfield(away_players)
-                    events.append(MatchEvent(
-                        minute=minute, event_type="miss", team="away",
-                        player_name=shooter["name"],
-                        description=f"❌ {shooter['name']}'s shot goes wide",
-                    ))
+                        if random.random() < 0.30:
+                            gk = self._pick_goalkeeper(home_players)
+                            events.append(MatchEvent(
+                                minute=minute, event_type="save", team="home",
+                                player_name=gk["name"],
+                                description=f"🧤 Сейв: {gk['name']}",
+                            ))
+                # Wide shots dropped from timeline (counted in stats only).
 
             # Yellow card (rare).
             if random.random() < 0.005:
@@ -456,7 +449,7 @@ class MatchEngine:
                     events.append(MatchEvent(
                         minute=minute, event_type="yellow_card", team=team,
                         player_name=player["name"],
-                        description=f"🟨 Yellow card for {player['name']}",
+                        description=f"🟨 Жёлтая карточка: {player['name']}",
                     ))
 
             # AI-side substitutions (60/70/75). The human team is left
@@ -485,7 +478,7 @@ class MatchEngine:
                 events.append(MatchEvent(
                     minute=minute, event_type="substitution", team=team,
                     player_name="",
-                    description=f"🔄 Substitution by {club_name}",
+                    description=f"🔄 Замена: {club_name}",
                 ))
                 if state.get("auto_subs_for_player") and (
                     (team == "home" and is_player_home is True)

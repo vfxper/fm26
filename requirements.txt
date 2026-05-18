@@ -1,41 +1,33 @@
-# Telegram Football Manager - Python Dependencies
+# Telegram Football Manager - Production Dependencies (slim for Render free tier)
 # Core
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 pydantic==2.5.3
+pydantic[email]==2.5.3
+email-validator==2.1.0
 python-dotenv==1.0.0
 
-# Database
+# Database (SQLite + async wrapper for prod)
 sqlalchemy[asyncio]==2.0.25
-asyncpg==0.29.0
+aiosqlite==0.19.0
 alembic==1.13.1
-psycopg2-binary==2.9.9
-
-# Cache & Queue
-redis[hiredis]==5.0.1
-celery==5.3.6
 
 # Auth
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 httpx==0.26.0
 
-# Telegram
+# Redis client (only the import is needed; run_local.py monkeypatches it
+# to use in-memory cache when REDIS_URL is empty)
+redis==5.0.1
+
+# Telegram bot (optional — used by /api/webhook handler)
 python-telegram-bot==20.7
 
-# Data
-pandas==2.1.4
-numpy==1.26.3
-
-# Testing
-pytest==7.4.4
-pytest-asyncio==0.23.3
-pytest-cov==4.1.0
-httpx==0.26.0
-
-# Monitoring
-prometheus-client==0.19.0
-sentry-sdk[fastapi]==1.39.2
+# Data (Python 3.11 has prebuilt wheels)
+pandas==2.2.0
+numpy==1.26.4
 
 # Utils
 python-multipart==0.0.6

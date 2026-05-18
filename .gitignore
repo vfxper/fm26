@@ -86,10 +86,12 @@ dmypy.json
 football_ai/models/
 football_ai/models_11v11/
 football_ai/models_11v11_v3/
+football_ai/models_11v11_v4/
 football_ai/logs/
 football_ai/logs_11v11/
 football_ai/logs_11v11_v2/
 football_ai/logs_11v11_v3/
+football_ai/logs_11v11_v4/
 
 # Hypothesis property-test cache (regenerated locally).
 .hypothesis/

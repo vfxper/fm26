@@ -227,6 +227,45 @@ body {
 .bench-item .bn-name { flex: 1; color: #d6d8e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bench-item .bn-pos { color: #8b86a3; font-size: 10px; }
 
+/* Halftime drag-and-drop pitch board */
+.ht-pitch-wrap { position: relative; width: 100%; height: 340px;
+  background: linear-gradient(180deg, #1d6f3a 0%, #155227 100%);
+  border-radius: 8px; border: 2px solid #0d4a1f; overflow: hidden;
+  margin-bottom: 10px; }
+.ht-pitch-wrap::before { content: ''; position: absolute; left: 50%;
+  top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.3); }
+.ht-pitch-wrap::after { content: ''; position: absolute; left: 50%;
+  top: 50%; width: 80px; height: 80px; transform: translate(-50%,-50%);
+  border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; }
+.ht-slot { position: absolute; transform: translate(-50%,-50%);
+  width: 54px; height: 54px; border-radius: 50%;
+  background: rgba(40,30,60,0.9); border: 2px solid #7c3aed;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; color: #fff; cursor: pointer;
+  transition: all .15s; }
+.ht-slot:hover { transform: translate(-50%,-50%) scale(1.06);
+  box-shadow: 0 6px 18px rgba(124,58,237,0.6); }
+.ht-slot.drop-target { background: rgba(16,185,129,0.85);
+  border-color: #10b981; transform: translate(-50%,-50%) scale(1.1); }
+.ht-slot-num { font-size: 13px; font-weight: 800; line-height: 1; }
+.ht-slot-name { font-size: 9px; line-height: 1.1; margin-top: 2px;
+  max-width: 50px; text-align: center; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ht-bench-list { display: flex; flex-direction: column; gap: 4px;
+  max-height: 290px; overflow-y: auto; }
+.ht-bench-item { display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; background: #14101e; border: 1px solid #261c3d;
+  border-radius: 6px; cursor: grab; font-size: 11px; color: #cbd5e1; }
+.ht-bench-item.dragging { opacity: 0.4; }
+.ht-bench-item:hover { background: #1a1430; }
+.ht-bn-num { background: #7c3aed; color: #fff; min-width: 20px;
+  height: 20px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 10px;
+  font-weight: 700; }
+.ht-bn-name { color: #fff; flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ht-bn-meta { color: #8ba4b8; font-size: 10px; }
+
 /* Medical center */
 .med-card { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; padding: 10px 12px; background: #14101e; border: 1px solid #261c3d; border-radius: 8px; margin-bottom: 6px; align-items: center; }
 .med-sev-minor { border-left: 4px solid #f59e0b; }
@@ -718,6 +757,37 @@ select.form-input { appearance: none; -webkit-appearance: none; background-image
   </div>
 </div>
 
+<!-- STATS SCREEN -->
+<div class="screen" id="screen-stats">
+  <div class="main">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <h2 style="margin:0"><span class="ico-h"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M9 19v-7"/><path d="M14 19V9"/><path d="M19 19V3"/></svg></span>Статистика</h2>
+        <div style="display:flex;gap:6px;align-items:center">
+          <label class="form-label" style="margin:0">Турнир:</label>
+          <select id="stats-competition-select" class="form-input" style="width:auto;margin-bottom:0;padding:6px 10px" onchange="loadStatsTab()">
+            <option value="">Загрузка...</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <h3 style="font-size:13px;color:#c4b5fd;margin:0 0 8px">⚽ Бомбардиры</h3>
+          <div id="stats-scorers" style="background:#0d0a17;border-radius:8px;padding:8px;min-height:200px">
+            <p style="color:#8b86a3;font-size:12px">Нет данных</p>
+          </div>
+        </div>
+        <div>
+          <h3 style="font-size:13px;color:#c4b5fd;margin:0 0 8px">🅰️ Ассистенты</h3>
+          <div id="stats-assists" style="background:#0d0a17;border-radius:8px;padding:8px;min-height:200px">
+            <p style="color:#8b86a3;font-size:12px">Нет данных</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- INBOX SCREEN -->
 <div class="screen" id="screen-inbox">
   <div class="main">
@@ -1002,6 +1072,11 @@ select.form-input { appearance: none; -webkit-appearance: none; background-image
   <div class="nav-item" id="nav-medical" onclick="showScreen('medical')">
     <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></span>
     Медицина
+  </div>
+
+  <div class="nav-item" id="nav-stats" onclick="showScreen('stats')">
+    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M9 19v-7"/><path d="M14 19V9"/><path d="M19 19V3"/></svg></span>
+    Статистика
   </div>
 
   <div class="nav-item" id="nav-calendar" onclick="showScreen('calendar')">
@@ -1471,6 +1546,7 @@ function showScreen(name) {
   if (name === 'training') loadTrainingState();
   if (name === 'tactics') loadTactics();
   if (name === 'medical') loadMedical();
+  if (name === 'stats') loadStatsScreen();
   if (name === 'transfers') { loadNegotiationsTab('search'); refreshScoutList(); refreshTransferNews(); }
 }
 
@@ -3765,6 +3841,103 @@ async function refreshHomeMedical() {
   } catch {}
 }
 
+// ===== STATS (top scorers / top assists) =====
+
+async function loadStatsScreen() {
+  if (!careerId) return;
+  // Load competitions list, populate dropdown, then load first
+  // competition's data automatically.
+  let competitions = [];
+  try {
+    const data = await api(`/careers/${careerId}/stats/competitions`);
+    competitions = data.competitions || [];
+  } catch (e) {
+    competitions = [];
+  }
+  const sel = document.getElementById('stats-competition-select');
+  if (!sel) return;
+  if (!competitions.length) {
+    sel.innerHTML = '<option value="">Нет данных — сыграй матч</option>';
+    document.getElementById('stats-scorers').innerHTML =
+      '<p style="color:#8b86a3;font-size:12px;padding:20px;text-align:center">Сначала сыграй или просимулируй несколько туров — здесь появятся бомбардиры лиги и еврокубков.</p>';
+    document.getElementById('stats-assists').innerHTML = '';
+    return;
+  }
+  sel.innerHTML = '<option value="">Все турниры</option>' + competitions.map(c =>
+    `<option value="${c.competition}">${c.label} (${c.total_goals} голов)</option>`
+  ).join('');
+  // Pick the first competition by default if any.
+  sel.value = competitions[0].competition;
+  await loadStatsTab();
+}
+
+async function loadStatsTab() {
+  if (!careerId) return;
+  const sel = document.getElementById('stats-competition-select');
+  const comp = sel ? sel.value : '';
+  const qs = comp ? `?competition=${encodeURIComponent(comp)}` : '';
+  try {
+    const [scorers, assists] = await Promise.all([
+      api(`/careers/${careerId}/stats/scorers${qs}`),
+      api(`/careers/${careerId}/stats/assists${qs}`),
+    ]);
+    _renderStatsTable(
+      'stats-scorers',
+      scorers.scorers || [],
+      'goals'
+    );
+    _renderStatsTable(
+      'stats-assists',
+      assists.assisters || [],
+      'assists'
+    );
+  } catch (e) {
+    document.getElementById('stats-scorers').innerHTML =
+      `<p style="color:#f87171;font-size:12px">Ошибка: ${e}</p>`;
+  }
+}
+
+function _renderStatsTable(hostId, items, primary) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = '<p style="color:#8b86a3;font-size:12px;padding:14px;text-align:center">Нет данных</p>';
+    return;
+  }
+  let html = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="text-align:left;color:#8b86a3;border-bottom:1px solid #261c3d">
+          <th style="padding:6px 8px;width:28px">#</th>
+          <th style="padding:6px 8px">Игрок</th>
+          <th style="padding:6px 8px">Клуб</th>
+          <th style="padding:6px 8px;text-align:center;width:36px">⚽</th>
+          <th style="padding:6px 8px;text-align:center;width:36px">🅰</th>
+          <th style="padding:6px 8px;text-align:center;width:36px">М</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  items.forEach((it, idx) => {
+    const isPrimaryCol = primary === 'goals' ? 'goals' : 'assists';
+    html += `
+      <tr style="border-bottom:1px solid #1a1430">
+        <td style="padding:5px 8px;color:${idx<3?'#f59e0b':'#8b86a3'};font-weight:${idx<3?'700':'400'}">${idx + 1}</td>
+        <td style="padding:5px 8px">
+          <div style="font-weight:600;color:#fff">${it.name}</div>
+          <div style="font-size:10px;color:#8b86a3">${it.position}</div>
+        </td>
+        <td style="padding:5px 8px;color:#cbd5e1;font-size:11px">${it.club || '—'}</td>
+        <td style="padding:5px 8px;text-align:center;color:${primary==='goals'?'#10b981':'#cbd5e1'};font-weight:${primary==='goals'?'700':'400'}">${it.goals}</td>
+        <td style="padding:5px 8px;text-align:center;color:${primary==='assists'?'#10b981':'#cbd5e1'};font-weight:${primary==='assists'?'700':'400'}">${it.assists}</td>
+        <td style="padding:5px 8px;text-align:center;color:#8b86a3">${it.appearances}</td>
+      </tr>
+    `;
+  });
+  html += '</tbody></table>';
+  host.innerHTML = html;
+}
+
 // Categories that are PURE NEWS — these only show up on the home
 // dashboard's news strip. They never clutter the inbox tab because
 // the user has no action to take on them (they're not about your
@@ -4371,18 +4544,118 @@ async function onDayClick(dateStr) {
 }
 
 async function _ensureLineupSet() {
-  // Returns true if the player has a saved starting_xi with at least
-  // 11 players. Otherwise alerts and bounces to the tactics tab.
+  // Always show the pre-match gate so the user can review/edit lineup
+  // and tactics before the match starts. The gate has its own validation
+  // ("Готов, играть" requires a starting XI of 11 — bench can be any
+  // size). Returns Promise<boolean>: true once the user confirms,
+  // false if cancelled.
   if (!careerId) return false;
+  let xiCount = 0;
   try {
     const t = await api(`/careers/${careerId}/tactics`);
     const xi = (t && t.starting_xi) || {};
-    const count = Object.keys(xi).length;
-    if (count >= 11) return true;
-  } catch {}
-  alert('Сначала выбери стартовый состав на вкладке «Тактика».');
-  if (typeof showScreen === 'function') showScreen('tactics');
-  return false;
+    xiCount = Object.keys(xi).length;
+  } catch (_) {}
+  return await _openPreMatchGate(xiCount);
+}
+
+// Opens a fullscreen pre-match gate that surfaces the existing tactics
+// editor inline, with a sticky "Готов, играть" button at the bottom.
+// Behaviour:
+//   - Switch the underlying screen to tactics so user can edit drag-and-drop
+//   - Pin a top banner with live XI count and "Готов, играть" / "Отмена"
+//   - "Готов, играть" requires starting_xi >= 11; bench size is unrestricted
+//     (every squad player not in XI is automatically a sub)
+//   - "Отмена" resolves false (caller should abort starting the match)
+function _openPreMatchGate(xiCount) {
+  return new Promise(resolve => {
+    // First: switch to the tactics screen so the user can edit.
+    if (typeof showScreen === 'function') showScreen('tactics');
+
+    function refreshBanner(xc) {
+      const xi = document.getElementById('prematch-xi-count');
+      if (xi) {
+        xi.textContent = `${xc}/11`;
+        xi.style.color = xc >= 11 ? '#10b981' : '#f87171';
+      }
+    }
+
+    // Build banner that floats above the page.
+    const html = `
+      <div id="prematch-banner"
+           style="position:fixed;left:0;right:0;top:0;z-index:9997;
+                  background:linear-gradient(180deg,#7c3aed,#5b21b6);
+                  color:#fff;padding:10px 16px;
+                  display:flex;align-items:center;gap:12px;
+                  box-shadow:0 4px 12px rgba(0,0,0,0.5)">
+        <div style="font-size:13px;flex:1">
+          <strong>📋 Перед матчем</strong> — проверь стартовый состав.
+          В составе:
+          <strong id="prematch-xi-count" style="color:${xiCount>=11?'#10b981':'#f87171'}">${xiCount}/11</strong>.
+          Все остальные игроки автоматически попадут в резерв и
+          доступны для замен.
+        </div>
+        <button onclick="window._prematchCancel()"
+                style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.3);
+                       color:#fff;padding:7px 14px;border-radius:6px;cursor:pointer;
+                       font-size:12px">Отмена</button>
+        <button onclick="window._prematchConfirm()"
+                style="background:#10b981;border:none;color:#fff;
+                       padding:8px 18px;border-radius:6px;cursor:pointer;
+                       font-size:13px;font-weight:700">
+          ✓ Готов, играть
+        </button>
+      </div>
+    `;
+    let host = document.getElementById('prematch-modal-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'prematch-modal-host';
+      document.body.appendChild(host);
+    }
+    host.innerHTML = html;
+
+    // Push down the page so the banner doesn't cover the screen header.
+    document.body.style.paddingTop = '54px';
+
+    // Poll the tactic state every second so the banner counter updates
+    // as the user drags players. Cheap and beats wiring into every
+    // drop handler.
+    const poll = setInterval(async () => {
+      try {
+        const t = await api(`/careers/${careerId}/tactics`);
+        const xi = (t && t.starting_xi) || {};
+        refreshBanner(Object.keys(xi).length);
+      } catch (_) {}
+    }, 1500);
+
+    function close(result) {
+      clearInterval(poll);
+      const h = document.getElementById('prematch-modal-host');
+      if (h) h.innerHTML = '';
+      document.body.style.paddingTop = '';
+      window._prematchCancel = null;
+      window._prematchConfirm = null;
+      resolve(result);
+    }
+
+    window._prematchCancel = () => close(false);
+    window._prematchConfirm = async () => {
+      try {
+        const t = await api(`/careers/${careerId}/tactics`);
+        const xi = (t && t.starting_xi) || {};
+        const xc = Object.keys(xi).length;
+        refreshBanner(xc);
+        if (xc < 11) {
+          alert(`В составе только ${xc} игроков, нужно ровно 11.`);
+          return;
+        }
+        close(true);
+      } catch (e) {
+        alert('Не удалось проверить состав: ' + e);
+      }
+    };
+  });
 }
 
 async function simulateMatchEvent(eventId) {
@@ -4430,83 +4703,160 @@ function _matchEventLineHtml(e) {
   </div>`;
 }
 
-function showHalftimeModal(eventId, data) {
-  // Build the modal: scoreboard at top, lineup + bench split, list of
-  // first-half events at bottom, "Продолжить матч" button.
+async function showHalftimeModal(eventId, data) {
+  // Build the modal: scoreboard at top, drag-and-drop tactical pitch
+  // (same look as the Tactics screen — formation slots + position
+  // labels), bench includes EVERY squad player not in starting XI,
+  // list of first-half events at bottom, "Продолжить матч" button.
   const playerTeam = data.player_team;  // "home" | "away" | null
   const me = playerTeam || "home";
   const subsMade = (data.subs_made || {})[me] || 0;
   const subsLeft = 5 - subsMade;
 
-  const rolePill = (zone) => {
-    const color = {DEF: '#42a5f5', MID: '#9ccc65', ATT: '#ffa726', GK: '#ab47bc'}[zone] || '#8ba4b8';
-    return `<span style="background:${color};color:#fff;font-size:9px;padding:1px 4px;border-radius:3px">${zone || '—'}</span>`;
-  };
+  const formation = data.formation || "4-3-3";
+  const startingXi = data.starting_xi || {};   // {slot_code: player_id}
+  const starters = data.starters || [];
 
-  const startersHtml = (data.starters || []).map(p => `
-    <div style="padding:5px 8px;border-bottom:1px solid #1a2634;display:flex;justify-content:space-between;align-items:center;font-size:12px">
-      <div>
-        ${rolePill(p.role_zone)}
-        <strong style="color:#fff;margin-left:6px">${p.name}</strong>
-        <span style="color:#8ba4b8;margin-left:6px">${p.position}</span>
+  // Pull formation slots (same source as Tactics screen) and full squad
+  // so we can render every non-starter on the bench, not just the 7
+  // server-picked ones.
+  let slots = [];
+  let fullSquad = [];
+  try {
+    const f = await api(`/formations/${formation}`);
+    slots = (f && f.slots) || [];
+  } catch (_) {}
+  try {
+    const sq = await api(`/careers/${careerId}/squad`);
+    fullSquad = (sq && sq.squad) || [];
+  } catch (_) {}
+
+  // Build slot HTML using the same .slot class as the tactics pitch.
+  // Each slot is a drop target — drop a bench player to make a sub.
+  const startersById = {};
+  for (const p of starters) startersById[p.player_id || p.id] = p;
+  const startersByName = {};
+  for (const p of starters) startersByName[p.name] = p;
+
+  let pitchSlots = '';
+  const usedPlayerIds = new Set();
+  for (const slot of slots) {
+    const playerId = startingXi[slot.code];
+    let player = playerId
+      ? (startersById[playerId] || fullSquad.find(p => (p.player_id || p.id) === playerId))
+      : null;
+    if (player) usedPlayerIds.add(player.player_id || player.id);
+    const safeOut = ((player && player.name) || '').replace(/'/g, '&#39;');
+    const lastName = ((player && player.name) || '').split(' ').slice(-1)[0] || 'пусто';
+    pitchSlots += `
+      <div class="slot ${player ? '' : 'empty'}"
+           data-out="${safeOut}"
+           data-slot-code="${slot.code}"
+           style="left:${slot.x}%;top:${100 - slot.y}%">
+        <div class="slot-pos">${slot.label}</div>
+        <div class="slot-num">${(player && player.squad_number) || '-'}</div>
+        <div class="slot-name">${lastName}</div>
       </div>
-      <button onclick="halftimePickSubOut('${p.name.replace(/'/g, '&#39;')}')"
-              style="background:#1e293b;border:1px solid #334155;color:#94a3b8;cursor:pointer;padding:3px 9px;border-radius:4px;font-size:11px">
-        Заменить
-      </button>
-    </div>
-  `).join('');
+    `;
+  }
+  // Fallback: if formation API did not return slots, fall back to a
+  // simple grid based on role_zone.
+  if (!slots.length) {
+    const zoneCols = {GK: 0, DEF: 1, MID: 2, ATT: 3};
+    const buckets = {GK: [], DEF: [], MID: [], ATT: []};
+    for (const p of starters) {
+      const z = (p.role_zone || 'MID').toUpperCase();
+      (buckets[z] || buckets.MID).push(p);
+    }
+    for (const z of ['GK', 'DEF', 'MID', 'ATT']) {
+      buckets[z].forEach((p, i) => {
+        const col = zoneCols[z] !== undefined ? zoneCols[z] : 2;
+        const x = 8 + col * 28;
+        const total = buckets[z].length;
+        const y = total === 1 ? 50 : 12 + (i * (76 / Math.max(1, total - 1)));
+        const safeOut = (p.name || '').replace(/'/g, '&#39;');
+        const lastName = (p.name || '').split(' ').slice(-1)[0];
+        usedPlayerIds.add(p.player_id || p.id);
+        pitchSlots += `
+          <div class="slot" data-out="${safeOut}"
+               style="left:${x}%;top:${y}%">
+            <div class="slot-num">${p.squad_number || '-'}</div>
+            <div class="slot-name">${lastName}</div>
+          </div>
+        `;
+      });
+    }
+  }
 
-  const benchHtml = (data.bench || []).map(p => `
-    <div style="padding:5px 8px;border-bottom:1px solid #1a2634;font-size:12px;color:#cbd5e1">
-      ${rolePill(p.role_zone)}
-      <strong style="margin-left:6px">${p.name}</strong>
-      <span style="color:#8ba4b8;margin-left:6px">${p.position} · CA ${p.ca}</span>
-    </div>
-  `).join('');
+  // Bench = entire squad minus the starters that are still on the pitch.
+  // We exclude starters strictly by player_id (squad list always has it).
+  const benchPool = fullSquad.length
+    ? fullSquad.filter(p => !usedPlayerIds.has(p.player_id || p.id))
+    : (data.bench || []);
 
-  const eventsHtml = (data.events || []).map(_matchEventLineHtml).join('') || '<div style="padding:10px;color:#8ba4b8;font-size:12px">Нет событий</div>';
+  const benchHtml = benchPool.map(p => {
+    const safeName = (p.name || '').replace(/'/g, '&#39;');
+    return `
+      <div class="ht-bench-item" draggable="true"
+           data-in="${safeName}" data-pos="${p.position || ''}">
+        <span class="ht-bn-num">${p.squad_number || '-'}</span>
+        <span class="ht-bn-name">${p.name}</span>
+        <span class="ht-bn-meta">${p.position || ''} · CA ${p.ca || '?'}</span>
+      </div>
+    `;
+  }).join('') || '<div style="padding:10px;color:#8ba4b8;font-size:12px">Нет доступных игроков</div>';
+
+  const eventsHtml = (data.events || [])
+    .map(_matchEventLineHtml)
+    .join('') ||
+    '<div style="padding:10px;color:#8ba4b8;font-size:12px">Нет событий</div>';
 
   const html = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;overflow-y:auto;padding:20px" id="halftime-overlay">
-      <div style="max-width:760px;margin:0 auto;background:#1a2634;border-radius:12px;padding:18px;border:1px solid #2d4a5e">
+      <div style="max-width:980px;margin:0 auto;background:#14101e;border-radius:12px;padding:18px;border:1px solid #261c3d">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <h2 style="color:#4fc3f7;margin:0">⏸️ Перерыв · ${data.minute}'</h2>
-          <span style="color:#8ba4b8;font-size:12px">Матч на паузе</span>
+          <h2 style="color:#c4b5fd;margin:0">⏸️ Перерыв · ${data.minute}'</h2>
+          <span style="color:#8b86a3;font-size:12px">Перетащи игрока со скамейки на состав, чтобы заменить</span>
         </div>
 
-        <div style="text-align:center;margin-bottom:16px;padding:12px;background:#0d1620;border-radius:8px">
+        <div style="text-align:center;margin-bottom:16px;padding:12px;background:#0d0a17;border-radius:8px">
           <div style="display:flex;justify-content:space-around;align-items:center">
-            <div style="flex:1;text-align:right;padding-right:12px;color:#cbd5e1">${data.home_team_name || ''}</div>
+            <div style="flex:1;text-align:right;padding-right:12px;color:#d6d8e0">${data.home_team_name || ''}</div>
             <div style="font-size:32px;font-weight:bold;color:#fff;padding:0 10px">
               ${data.home_score} – ${data.away_score}
             </div>
-            <div style="flex:1;text-align:left;padding-left:12px;color:#cbd5e1">${data.away_team_name || ''}</div>
+            <div style="flex:1;text-align:left;padding-left:12px;color:#d6d8e0">${data.away_team_name || ''}</div>
           </div>
-          <div style="margin-top:6px;font-size:11px;color:#8ba4b8">
+          <div style="margin-top:6px;font-size:11px;color:#8b86a3">
             Удары: ${data.home_shots} – ${data.away_shots} · Владение: ${data.home_possession}% – ${data.away_possession}%
           </div>
         </div>
 
         <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-          <strong style="color:#cbd5e1;font-size:13px">⚙️ Замены: ${subsMade}/5</strong>
-          <span style="color:#8ba4b8;font-size:11px">Осталось: ${subsLeft}</span>
+          <strong style="color:#d6d8e0;font-size:13px">⚙️ Замены: ${subsMade}/5</strong>
+          <span style="color:#8b86a3;font-size:11px">Осталось: ${subsLeft} · Формация: ${formation}</span>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          <div style="background:#0d1620;border-radius:8px;padding:8px">
-            <div style="font-size:11px;color:#4fc3f7;font-weight:600;margin-bottom:6px">📋 На поле</div>
-            ${startersHtml}
+        <div style="display:grid;grid-template-columns:minmax(420px,1.6fr) 1fr;gap:12px;margin-bottom:14px">
+          <div class="pitch-wrap" id="ht-pitch-wrap" style="height:480px">
+            <div class="pitch-circle"></div>
+            <div class="pitch-area-top"></div>
+            <div class="pitch-area-bottom"></div>
+            ${pitchSlots}
           </div>
-          <div style="background:#0d1620;border-radius:8px;padding:8px">
-            <div style="font-size:11px;color:#4fc3f7;font-weight:600;margin-bottom:6px">🪑 Скамейка</div>
-            ${benchHtml || '<div style="padding:10px;color:#8ba4b8;font-size:12px">Скамейка пуста</div>'}
+          <div>
+            <div style="font-size:11px;color:#c4b5fd;font-weight:600;margin-bottom:6px">
+              🪑 Резерв (${benchPool.length}) — тяни на состав
+            </div>
+            <div class="ht-bench-list" id="ht-bench" style="max-height:480px">
+              ${benchHtml}
+            </div>
           </div>
         </div>
 
         <details style="margin-bottom:12px">
-          <summary style="cursor:pointer;color:#cbd5e1;font-size:12px">📜 События первого тайма</summary>
-          <div style="margin-top:8px;max-height:200px;overflow-y:auto;background:#0d1620;border-radius:8px">
+          <summary style="cursor:pointer;color:#d6d8e0;font-size:12px">📜 События первого тайма</summary>
+          <div style="margin-top:8px;max-height:200px;overflow-y:auto;background:#0d0a17;border-radius:8px">
             ${eventsHtml}
           </div>
         </details>
@@ -4529,6 +4879,43 @@ function showHalftimeModal(eventId, data) {
   // Cache state for sub picker.
   window._halftimeState = data;
   window._halftimeEventId = eventId;
+
+  // Wire up drag-and-drop: drag bench item onto pitch slot to apply sub.
+  // Plus the existing "Заменить" picker still works through halftimePickSubOut
+  // (kept as a fallback for keyboards/touch users who can't drag).
+  setTimeout(() => {
+    const benchItems = document.querySelectorAll('#ht-bench .ht-bench-item');
+    const pitchSlots = document.querySelectorAll('#ht-pitch-wrap .slot[data-out]');
+
+    benchItems.forEach(item => {
+      item.addEventListener('dragstart', e => {
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/in_name', item.dataset.in);
+      });
+      item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    });
+
+    pitchSlots.forEach(slot => {
+      const outName = slot.dataset.out;
+      if (!outName) return;
+      slot.addEventListener('dragover', e => {
+        e.preventDefault();
+        slot.classList.add('drag-over');
+      });
+      slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+      slot.addEventListener('drop', e => {
+        e.preventDefault();
+        slot.classList.remove('drag-over');
+        const inName = e.dataTransfer.getData('text/in_name');
+        if (!inName) return;
+        halftimeApplySub(outName, inName);
+      });
+      // Click also opens the picker for accessibility.
+      slot.addEventListener('click', () => halftimePickSubOut(outName));
+      slot.style.cursor = 'pointer';
+    });
+  }, 0);
 }
 
 function halftimePickSubOut(outName) {
@@ -4620,11 +5007,48 @@ async function halftimeResume(eventId) {
   }
 }
 
+function _translateEventDescription(desc) {
+  if (!desc) return desc;
+  // Translate any English match-engine strings that may still come
+  // from old saves or older backend versions.
+  return desc
+    .replace(/(\S.+?)'s shot goes wide/, '❌ $1 — мимо ворот')
+    .replace(/^\s*X\s+/, '❌ ')
+    .replace(/^\s*Save by\s+(.+)$/, '🧤 Сейв: $1')
+    .replace(/^\s*🧤\s*Save by\s+(.+)$/, '🧤 Сейв: $1')
+    .replace(/(\S.+?)\s+scores for\s+(.+?)!?$/, '⚽ Гол! $1 забивает за $2!')
+    .replace(/Substitution by\s+(.+)$/, 'Замена: $1')
+    .replace(/^Yellow card for\s+(.+)$/, '🟨 Жёлтая карточка: $1');
+}
+
+// Filter out noisy events (wide shots, repeat saves) so the timeline
+// shows only the meaningful moments. Keeps goals, cards, subs, and a
+// limited number of saves spread across the match.
+function _filterMatchTimeline(events) {
+  if (!Array.isArray(events) || events.length === 0) return [];
+  const out = [];
+  let lastSaveMin = -100;
+  for (const e of events) {
+    const t = (e.event_type || '').toLowerCase();
+    const desc = (e.description || '').toLowerCase();
+    // Drop wide shots / generic misses.
+    if (t === 'miss' || /shot goes wide|мимо ворот/i.test(desc)) continue;
+    // Throttle saves to one per ~10 minutes.
+    if (t === 'save' || /save by|сейв/i.test(desc)) {
+      if (e.minute - lastSaveMin < 10) continue;
+      lastSaveMin = e.minute;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
 function showMatchResult(data) {
-  const eventsList = data.events.map(e =>
+  const filtered = _filterMatchTimeline(data.events || []);
+  const eventsList = filtered.map(e =>
     `<div style="padding:6px 10px;border-bottom:1px solid #1a2634;font-size:12px">
       <span style="color:#4fc3f7;font-weight:bold;display:inline-block;width:30px">${e.minute}'</span>
-      <span style="color:${e.team === 'home' ? '#66bb6a' : '#ef5350'}">${e.description}</span>
+      <span style="color:${e.team === 'home' ? '#66bb6a' : '#ef5350'}">${_translateEventDescription(e.description)}</span>
     </div>`
   ).join('');
 

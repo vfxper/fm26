@@ -22,6 +22,7 @@ from app.api.routes import inbox
 from app.api.routes import negotiations
 from app.api.routes import match_play
 from app.api.routes import medical
+from app.api.routes import stats
 
 # Import bot webhook router
 from app.bot.webhook import webhook_router
@@ -51,6 +52,7 @@ api_router.include_router(calendar.router)
 api_router.include_router(inbox.router)
 api_router.include_router(negotiations.router)
 api_router.include_router(medical.router)
+api_router.include_router(stats.router)
 api_router.include_router(match_play.router, prefix="/careers")
 
 # Register Telegram bot webhook router

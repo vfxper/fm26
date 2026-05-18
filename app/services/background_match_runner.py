@@ -193,6 +193,21 @@ async def _player_club_name(db: AsyncSession, career_id: int) -> Optional[str]:
     return None
 
 
+async def _read_career_season(db: AsyncSession, career_id: int) -> int:
+    """Return the career's current season number (defaults to 1)."""
+    try:
+        r = await db.execute(
+            text("SELECT current_season FROM careers WHERE id = :c"),
+            {"c": career_id},
+        )
+        row = r.fetchone()
+        if row and row[0]:
+            return int(row[0])
+    except Exception:
+        pass
+    return 1
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Domestic league background simulation
 # ──────────────────────────────────────────────────────────────────────
@@ -298,6 +313,12 @@ async def _simulate_league_background(
         return  # already simulated for this matchday in this career
 
     background_count = 0
+    # Determine current season once for stats persistence.
+    season = await _read_career_season(db, career_id)
+    competition_label = f"league:{player_league}" if player_league else "league:?"
+
+    from app.services.player_stats_service import attribute_match_to_players
+
     for home, away in today_pairs:
         if home == player_club or away == player_club:
             continue
@@ -305,9 +326,32 @@ async def _simulate_league_background(
         away_ca = await _team_avg_ca(db, away)
         h, a = _sample_score(home_ca + 5, away_ca)
         _update_league_table(career_id, home, away, h, a)
+        # Distribute goals/assists/appearances to actual players so the
+        # "Top scorers / Top assists" tables on the frontend reflect
+        # every AI-vs-AI league match in the universe.
+        try:
+            await attribute_match_to_players(
+                db,
+                career_id=career_id,
+                season=season,
+                competition=competition_label,
+                home_club=home,
+                away_club=away,
+                home_score=h,
+                away_score=a,
+                commit=False,
+            )
+        except Exception:
+            pass
         background_count += 1
 
     if background_count:
+        # Single commit for all matchday stats — much cheaper than
+        # committing per match.
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
         done_set.add(sentinel_tag)
         # Same as the UCL block below — these auto-simulations are
         # noise that doesn't change anything the user can act on.
@@ -424,6 +468,9 @@ async def _simulate_ucl_background(
     gen = UCLGenerator(db)
 
     simulated = 0
+    season = await _read_career_season(db, career_id)
+    from app.services.player_stats_service import attribute_match_to_players
+
     for tie_id, home_pid, away_pid in unplayed:
         home_pid = int(home_pid)
         away_pid = int(away_pid)
@@ -444,6 +491,21 @@ async def _simulate_ucl_background(
             home_score=h,
             away_score=a,
         )
+        # UCL stats — same model as league.
+        try:
+            await attribute_match_to_players(
+                db,
+                career_id=career_id,
+                season=season,
+                competition="ucl",
+                home_club=home_name,
+                away_club=away_name,
+                home_score=h,
+                away_score=a,
+                commit=False,
+            )
+        except Exception:
+            pass
         await db.execute(
             text("UPDATE ucl_phase_matchups SET played = 1 WHERE id = :tid"),
             {"tid": tie_id},

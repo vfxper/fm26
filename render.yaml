@@ -3,10 +3,10 @@ services:
     name: fm26-backend
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python seed_local.py || true
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt && python seed_local.py || true
     startCommand: python run_local.py
     envVars:
       - key: PYTHON_VERSION
-        value: "3.12.0"
+        value: "3.11.9"
       - key: PORT
         value: "8000"

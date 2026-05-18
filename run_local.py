@@ -397,6 +397,24 @@ def create_tables(conn):
         Column('created_at', DateTime, server_default=func.now()),
         Column('updated_at', DateTime, server_default=func.now()),
     )
+
+    # Per-player season tally of goals/assists/appearances in each
+    # competition. Populated by both the user's match flow and the
+    # AI-vs-AI background runner so the "Top scorers / Top assists"
+    # screens reflect every league + cup match in the universe.
+    Table('player_match_stats', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('career_id', Integer, nullable=False),
+        Column('player_id', Integer, nullable=False),
+        Column('club_name', String(120)),
+        Column('competition', String(40)),  # 'league:Premier League' / 'ucl' / 'uel' / 'uecl' / 'cup'
+        Column('season', Integer, default=1),
+        Column('goals', Integer, default=0),
+        Column('assists', Integer, default=0),
+        Column('appearances', Integer, default=0),
+        Index('idx_pms_career_comp', 'career_id', 'competition'),
+        Index('idx_pms_player', 'player_id'),
+    )
     
     Table('league_configs', metadata,
         Column('id', Integer, primary_key=True),

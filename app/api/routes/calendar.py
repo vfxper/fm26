@@ -795,6 +795,36 @@ async def simulate_match_event(
         except Exception:
             pass  # league table is best-effort; never block the match
 
+        # Attribute stats for the user's league match.
+        try:
+            from app.services.player_stats_service import attribute_match_to_players
+            from app.data.club_budgets import CLUBS as ALL_CLUBS
+            club_row = (await db.execute(
+                text("SELECT club_id, current_season FROM careers WHERE id = :c"),
+                {"c": career_id}
+            )).fetchone()
+            # Resolve the user's league name for the competition label.
+            lg = None
+            if club_row and club_row[0]:
+                ccid = int(club_row[0])
+                if 1 <= ccid <= len(ALL_CLUBS):
+                    lg = ALL_CLUBS[ccid - 1][3]  # (name, scout, transfer, league)
+            comp_label = f"league:{lg}" if lg else "league:?"
+            season = int(club_row[1]) if club_row and club_row[1] else 1
+            await attribute_match_to_players(
+                db,
+                career_id=career_id,
+                season=season,
+                competition=comp_label,
+                home_club=actual_home_name,
+                away_club=actual_away_name,
+                home_score=match_result.home_score,
+                away_score=match_result.away_score,
+                commit=False,
+            )
+        except Exception:
+            pass
+
         # Also auto-simulate every OTHER league match scheduled today,
         # so the table stays consistent with the player's progression.
         try:
