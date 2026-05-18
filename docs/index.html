@@ -5073,10 +5073,16 @@ function _filterMatchTimeline(events) {
 // each time. Names are normalised (lowercase, no diacritics) so
 // "Mbappé", "MBAPPE", "kylian mbappé" all hit the same bucket.
 const _PLAYER_VIDEOS = {
-  "haaland":  ["assets/haaland.MP4"],
-  "erling haaland": ["assets/haaland.MP4"],
+  "haaland":  ["assets/haaland.MP4", "assets/haaland 2.mp4", "assets/haaland 3.mp4"],
+  "erling haaland": ["assets/haaland.MP4", "assets/haaland 2.mp4", "assets/haaland 3.mp4"],
   "mbappe":   ["assets/mbappe.mp4", "assets/mbappe 2.mp4", "assets/mbappe 3.mp4"],
   "kylian mbappe": ["assets/mbappe.mp4", "assets/mbappe 2.mp4", "assets/mbappe 3.mp4"],
+  "vinicius": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "vinicius junior": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "vinicius jr": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "vinicius jr.": ["assets/vinisius junior.mp4", "assets/vinisius junior 2.mp4", "assets/vinisius junior 3.mp4"],
+  "yamal":    ["assets/yamal.mp4", "assets/yamal 2.mp4", "assets/yamal 3.mp4"],
+  "lamine yamal": ["assets/yamal.mp4", "assets/yamal 2.mp4", "assets/yamal 3.mp4"],
 };
 
 function _normaliseName(s) {
