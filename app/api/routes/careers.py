@@ -712,6 +712,44 @@ async def advance_day(
     except Exception:
         pass
 
+    # ── Loan returns ─────────────────────────────────────────────
+    # Players whose loan has expired (loan_until <= today) come back.
+    # Set is_loaned=0 and inbox-notify the user.
+    try:
+        loan_rows = await db.execute(text(
+            "SELECT sp.id, sp.player_id, p.name "
+            "FROM squad_players sp "
+            "JOIN players p ON p.id = sp.player_id "
+            "WHERE sp.career_id = :c "
+            "  AND COALESCE(sp.is_loaned, 0) = 1 "
+            "  AND sp.loan_until IS NOT NULL "
+            "  AND sp.loan_until <= :d"
+        ), {"c": career_id, "d": str(new_date)})
+        returning = loan_rows.fetchall()
+        if returning:
+            for sp_id, pid, pname in returning:
+                await db.execute(text(
+                    "UPDATE squad_players SET is_loaned = 0, "
+                    "loan_until = NULL WHERE id = :i"
+                ), {"i": sp_id})
+                try:
+                    from app.api.routes.inbox import push_inbox_message
+                    await push_inbox_message(
+                        db, career_id, category="news",
+                        subject=f"{pname} вернулся из аренды",
+                        body=("Срок аренды истёк, игрок снова доступен "
+                              "в составе. Не забудь про матч-готовность."),
+                        date=str(new_date),
+                    )
+                except Exception:
+                    pass
+                notifications.append(f"{pname} вернулся из аренды")
+            await db.commit()
+    except Exception as _e:
+        # Non-fatal — log and move on. Likely loan_until column is missing
+        # on legacy DBs (graceful: ALTER TABLE handled in patch_for_sqlite).
+        pass
+
     # ── AI auto-simulation of background matches ──────────────────────────
     # Each new in-game day, simulate every NON-PLAYER match scheduled on
     # this date so the league/UCL tables stay in sync with the player's

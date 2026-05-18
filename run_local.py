@@ -102,6 +102,7 @@ def patch_for_sqlite():
                 "ALTER TABLE careers ADD COLUMN manager_country VARCHAR(100)",
                 "ALTER TABLE careers ADD COLUMN dev_style VARCHAR(40)",
                 "ALTER TABLE players ADD COLUMN name_ascii TEXT",
+                "ALTER TABLE squad_players ADD COLUMN loan_until TEXT",
             ]:
                 try:
                     await conn.execute(text(stmt))

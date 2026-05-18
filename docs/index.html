@@ -3382,6 +3382,13 @@ async function autoBestXI() {
       // wide defender (D:R / D:L) unless they ALSO list D:C.
       if (nZone === "D" && nSide === "C" && pZone === "D" && pSide !== "C") continue;
       if (nZone === "D" && nSide !== "C" && pZone === "D" && pSide === "C") continue;
+      // Block defender → midfielder (CB on M:C is FM2024 nightmare).
+      if (nZone === "M" && pZone === "D") continue;
+      // Block midfielder → defender (CM on CB).
+      if (nZone === "D" && pZone === "M") continue;
+      // Block keeper → outfield and outfield → keeper (already handled
+      // earlier, but keep defensive).
+      if (nZone === "GK" || pZone === "GK") continue;
       // Wide attackers (AM:L/R) on ST:C — only via direct match handled
       // above. Here we require zone-distance ≤ 1 and side-distance ≤ 1.
       if (dz > 1) continue;
@@ -3421,8 +3428,11 @@ async function autoBestXI() {
       if (used.has(p.player_id)) continue;
       const compat = compatScore(p.position, need);
       if (compat < 0) continue;
-      // Position is hard-gated. CA only breaks ties.
-      const score = compat * 1000 + (p.ca || 0);
+      // Position is hard-gated. Within compatible candidates, CA matters
+      // more: a CA-185 winger on AM:L beats a CA-130 ML who exact-fits.
+      // Multiplier 100 keeps position dominant for major mismatches
+      // (compat 30 vs 100 = 7000 gap = 70 CA points to override).
+      const score = compat * 100 + (p.ca || 0);
       if (score > bestScore) { bestScore = score; best = p; }
     }
     if (best) {
@@ -5171,8 +5181,13 @@ function _maybeShowSigningVideo(playerId, response) {
     if (response.player && response.player.name) name = response.player.name;
     else if (response.player_name) name = response.player_name;
   }
-  if (!name && Array.isArray(window._squadCache)) {
-    const p = window._squadCache.find(p => p.id === playerId || p.player_id === playerId);
+  // Try local _squadCache (array) and global window._squadCache.rows.
+  if (!name) {
+    const arr = (typeof _squadCache !== 'undefined' && Array.isArray(_squadCache))
+      ? _squadCache : null;
+    const winRows = (window._squadCache && window._squadCache.rows) || null;
+    const candidates = arr || winRows || [];
+    const p = candidates.find(p => p.id === playerId || p.player_id === playerId);
     if (p) name = p.name;
   }
   if (!name) return;

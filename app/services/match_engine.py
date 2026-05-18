@@ -391,12 +391,18 @@ class MatchEngine:
             home_ff = home_fatigue ** 0.6
             away_ff = away_fatigue ** 0.6
 
-            # Home shot.
-            if random.random() < 0.05 * (home_strength / 100) * home_shot_mult * home_ff:
+            # Home shot. Base 0.06/min × strength gives ~5.4 shots/match
+            # for an average team, ~9 for a strong one — closer to real
+            # football than the previous 0.05.
+            if random.random() < 0.06 * (home_strength / 100) * home_shot_mult * home_ff:
                 state["home_shots"] += 1
-                if random.random() < 0.4:
+                if random.random() < 0.42:
                     state["home_sot"] += 1
-                    if random.random() < 0.25 * home_conv_mult * home_ff:
+                    # Conversion 0.30 × conv_mult means a strong attacking
+                    # team (Real Madrid CA 165 + ST mult) ends up with
+                    # ~2.0-2.5 goals/match instead of the old 0.7. Weak
+                    # teams (CA 110) still finish ~0.6-0.9.
+                    if random.random() < 0.30 * home_conv_mult * home_ff:
                         state["home_score"] += 1
                         scorer = self._pick_outfield(home_players)
                         events.append(MatchEvent(
@@ -418,11 +424,11 @@ class MatchEngine:
                 # from the timeline — keep them only in shots count.
 
             # Away shot.
-            if random.random() < 0.05 * (away_strength / 100) * away_shot_mult * away_ff:
+            if random.random() < 0.06 * (away_strength / 100) * away_shot_mult * away_ff:
                 state["away_shots"] += 1
-                if random.random() < 0.4:
+                if random.random() < 0.42:
                     state["away_sot"] += 1
-                    if random.random() < 0.25 * away_conv_mult * away_ff:
+                    if random.random() < 0.30 * away_conv_mult * away_ff:
                         state["away_score"] += 1
                         scorer = self._pick_outfield(away_players)
                         events.append(MatchEvent(
