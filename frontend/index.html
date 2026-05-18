@@ -2017,8 +2017,16 @@ async function api(path, method = 'GET', body = null) {
     // spamming "Career not found" alerts.
     if (res.status === 404 && /\/careers\/\d+\//.test(path)) {
       console.warn('[api] 404 on', path, '— resetting career and returning to wizard');
-      _handleStaleCareer();
+      _handleStaleCareer('not_found');
       return { error: 'Career not found', _stale: true };
+    }
+    // 403 on /careers/<id>/... means the careerId in localStorage belongs
+    // to ANOTHER user (typical when two friends share the same browser /
+    // device / cached state). Same fix — wipe and bounce to wizard.
+    if (res.status === 403 && /\/careers\/\d+/.test(path)) {
+      console.warn('[api] 403 on', path, '— career belongs to another user, resetting');
+      _handleStaleCareer('forbidden');
+      return { error: 'Not your career', _stale: true };
     }
     return await res.json();
   } catch (e) {
@@ -2030,7 +2038,7 @@ async function api(path, method = 'GET', body = null) {
 // Called once when the backend tells us our career id no longer exists.
 // Wipes localStorage, resets in-memory state, and shows the wizard.
 let _staleHandled = false;
-function _handleStaleCareer() {
+function _handleStaleCareer(reason) {
   if (_staleHandled) return;
   _staleHandled = true;
   try {
@@ -2049,7 +2057,10 @@ function _handleStaleCareer() {
     if (cs) cs.style.display = 'block';
     if (typeof loadClubs === 'function') loadClubs();
     if (typeof wizardGo === 'function') wizardGo('mode');
-    alert('Карьера была удалена или сброшена. Создай новую.');
+    const msg = reason === 'forbidden'
+      ? 'Эта карьера принадлежит другому игроку. Создай свою.'
+      : 'Карьера была удалена или сброшена. Создай новую.';
+    alert(msg);
     _staleHandled = false;
   }, 0);
 }
