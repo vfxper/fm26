@@ -2139,10 +2139,14 @@ async function advanceDay() {
   // While the pre-match gate is active, the underlying screen still
   // shows the header "Continue" button. Pressing it here would loop
   // back into the match-day modal forever. Block until the gate is
-  // resolved.
-  if (window._prematchActive) {
+  // resolved. The DOM check guards against stale flags from a previous
+  // page session — we look for the actual banner element.
+  const banner = document.getElementById('prematch-banner');
+  if (banner) {
     return;
   }
+  // Reset stale flag if no banner is on screen.
+  window._prematchActive = false;
   const data = await api(`/careers/${careerId}/advance-day`, 'POST');
   if (data && data.season) {
     const newDate = data.game_date || data.current_date;
@@ -5412,6 +5416,10 @@ function applyCalendarFilters() {
 // ===== INIT =====
 
 async function init() {
+  // Reset any stale pre-match state from a previous session.
+  window._prematchActive = false;
+  try { document.getElementById('prematch-modal-host')?.remove(); } catch (_) {}
+  try { document.body.style.paddingTop = ''; } catch (_) {}
   // Check if we have an existing career
   const savedCareerId = localStorage.getItem('fm26_career_id');
   const savedToken = localStorage.getItem('fm26_token');
