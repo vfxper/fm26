@@ -1,0 +1,310 @@
+"""
+Halftime / interactive match play endpoints.
+
+Three steps:
+
+  POST /api/careers/{cid}/match/{event_id}/start
+    → simulate the first half (1..45'), persist state in
+      ``match_sessions`` and return the half-time snapshot
+      (score, events, lineups, bench).
+
+  POST /api/careers/{cid}/match/{event_id}/sub
+    body: { team: "home"|"away", out_name, in_player: {name, position, ca} }
+    → apply one substitution (max 5 per team), update state.
+
+  POST /api/careers/{cid}/match/{event_id}/resume
+    → simulate the second half (46..90'), persist match result via
+      the same path the legacy /simulate endpoint uses, drop the
+      session row, return final score.
+
+The match_engine state dict already contains JSON-friendly types
+(int, str, list of dicts) — we just need to convert ``events``
+(list of MatchEvent dataclass) when serialising and back when
+deserialising.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from typing import Any, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.dependencies import get_current_user
+from app.core.database import get_db
+from app.data.club_budgets import CLUBS
+from app.services.match_engine import MatchEngine, MatchEvent
+
+
+router = APIRouter(tags=["match-play"])
+
+
+# ───── helpers ────────────────────────────────────────────────────────────
+
+def _serialise_state(state: dict) -> str:
+    """JSON-serialise the engine state. Converts MatchEvent dataclasses
+    to plain dicts."""
+    s = dict(state)
+    evs = s.get("events") or []
+    s["events"] = [asdict(e) if hasattr(e, "__dataclass_fields__") else e
+                   for e in evs]
+    return json.dumps(s, ensure_ascii=False)
+
+
+def _deserialise_state(raw: str) -> dict:
+    """Inverse of _serialise_state. Returns a state dict ready to feed
+    back into MatchEngine.simulate_second_half."""
+    s = json.loads(raw)
+    evs = s.get("events") or []
+    # Engine accepts both dicts and MatchEvent — leave dicts so the
+    # engine converts them once.
+    s["events"] = evs
+    return s
+
+
+async def _load_event(
+    db: AsyncSession, career_id: int, event_id: int
+) -> dict:
+    """Fetch the calendar_events row for this match. Raise 404 if missing."""
+    r = await db.execute(text(
+        "SELECT id, event_date, event_type, home_club_id, away_club_id, "
+        "       priority, description "
+        "FROM calendar_events WHERE id = :i AND career_id = :c"
+    ), {"i": event_id, "c": career_id})
+    row = r.fetchone()
+    if not row:
+        raise HTTPException(404, f"Calendar event {event_id} not found")
+    return {
+        "id": int(row[0]),
+        "event_date": row[1],
+        "event_type": row[2],
+        "home_club_id": row[3],
+        "away_club_id": row[4],
+        "priority": int(row[5] or 0),
+        "description": row[6] or "",
+    }
+
+
+def _club_name_by_id(cid: Optional[int]) -> str:
+    if not cid or not (1 <= cid <= len(CLUBS)):
+        return f"Club #{cid}"
+    return CLUBS[cid - 1][0]
+
+
+async def _get_session_row(
+    db: AsyncSession, career_id: int, event_id: int
+) -> Optional[dict]:
+    r = await db.execute(text(
+        "SELECT id, phase, state_json FROM match_sessions "
+        "WHERE career_id = :c AND event_id = :e"
+    ), {"c": career_id, "e": event_id})
+    row = r.fetchone()
+    if not row:
+        return None
+    return {"id": int(row[0]), "phase": row[1], "state_json": row[2]}
+
+
+# ───── /start ─────────────────────────────────────────────────────────────
+
+
+@router.post("/{career_id}/match/{event_id}/start")
+async def start_match(
+    career_id: int,
+    event_id: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Simulate the first half and return halftime state."""
+    # Load event & figure out who's home/away.
+    ev = await _load_event(db, career_id, event_id)
+    if ev["priority"] < 2:
+        raise HTTPException(400, "Этот ивент не является матчем")
+
+    home_id = ev["home_club_id"]
+    away_id = ev["away_club_id"]
+    home_name = _club_name_by_id(home_id)
+    away_name = _club_name_by_id(away_id)
+
+    # Determine if the player is home or away.
+    pclub_row = await db.execute(text(
+        "SELECT club_id FROM careers WHERE id = :c"
+    ), {"c": career_id})
+    pclub = pclub_row.scalar()
+    is_player_home: Optional[bool] = None
+    if pclub == home_id:
+        is_player_home = True
+    elif pclub == away_id:
+        is_player_home = False
+
+    # Reuse existing session if one is already in progress.
+    existing = await _get_session_row(db, career_id, event_id)
+    if existing and existing["phase"] == "halftime":
+        state = _deserialise_state(existing["state_json"])
+        return _halftime_response(state, event_id)
+
+    engine = MatchEngine(db)
+    state = await engine.simulate_first_half(
+        home_id or 0, away_id or 0, home_name, away_name,
+        is_player_home=is_player_home, career_id=career_id,
+    )
+
+    # Persist.
+    raw = _serialise_state(state)
+    await db.execute(text(
+        "INSERT INTO match_sessions "
+        "(career_id, event_id, phase, state_json) "
+        "VALUES (:c, :e, 'halftime', :s)"
+    ), {"c": career_id, "e": event_id, "s": raw})
+    await db.commit()
+
+    return _halftime_response(state, event_id)
+
+
+def _halftime_response(state: dict, event_id: int) -> dict:
+    """Shape the half-time payload returned to the UI."""
+    is_player_home = state.get("is_player_home")
+    player_team = (
+        "home" if is_player_home is True
+        else "away" if is_player_home is False
+        else None
+    )
+    starters = state.get(f"{player_team}_players", []) if player_team else []
+    bench = state.get(f"{player_team}_bench", []) if player_team else []
+
+    # Convert events to dicts for the UI.
+    evs = state.get("events") or []
+    events = [
+        e if isinstance(e, dict) else asdict(e)
+        for e in evs
+    ]
+
+    return {
+        "event_id": event_id,
+        "phase": state.get("phase", "halftime"),
+        "minute": state.get("current_minute", 45),
+        "home_score": state.get("home_score", 0),
+        "away_score": state.get("away_score", 0),
+        "home_team_name": state.get("home_club_name", ""),
+        "away_team_name": state.get("away_club_name", ""),
+        "home_shots": state.get("home_shots", 0),
+        "away_shots": state.get("away_shots", 0),
+        "home_possession": state.get("home_possession", 50),
+        "away_possession": state.get("away_possession", 50),
+        "subs_made": state.get("subs_made", {"home": 0, "away": 0}),
+        "subs_allowed": 5,
+        "player_team": player_team,
+        "starters": starters,
+        "bench": bench,
+        "events": events,
+    }
+
+
+# ───── /sub ───────────────────────────────────────────────────────────────
+
+
+class SubRequest(BaseModel):
+    team: str       # "home" or "away"
+    out_name: str
+    in_player_name: str   # bench player to bring on
+
+
+@router.post("/{career_id}/match/{event_id}/sub")
+async def sub(
+    career_id: int,
+    event_id: int,
+    body: SubRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply one substitution to an in-progress match."""
+    sess = await _get_session_row(db, career_id, event_id)
+    if not sess or sess["phase"] != "halftime":
+        raise HTTPException(400, "Матч не на перерыве")
+
+    state = _deserialise_state(sess["state_json"])
+
+    if body.team not in ("home", "away"):
+        raise HTTPException(422, "team должен быть 'home' или 'away'")
+    if state["subs_made"][body.team] >= 5:
+        raise HTTPException(422, "Лимит замен (5) исчерпан")
+
+    bench = state.get(f"{body.team}_bench", [])
+    in_player = next(
+        (p for p in bench if p.get("name") == body.in_player_name),
+        None,
+    )
+    if not in_player:
+        raise HTTPException(404, f"Игрок {body.in_player_name} не найден на скамейке")
+
+    starters = state.get(f"{body.team}_players", [])
+    if not any(p.get("name") == body.out_name for p in starters):
+        raise HTTPException(404, f"Игрок {body.out_name} не найден в стартовом составе")
+
+    engine = MatchEngine(db)
+    engine._apply_substitution(state, {
+        "team": body.team,
+        "out_name": body.out_name,
+        "in_player": dict(in_player),
+    })
+
+    # Persist updated state.
+    raw = _serialise_state(state)
+    await db.execute(text(
+        "UPDATE match_sessions SET state_json = :s, updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = :i"
+    ), {"s": raw, "i": sess["id"]})
+    await db.commit()
+
+    return _halftime_response(state, event_id)
+
+
+# ───── /resume ────────────────────────────────────────────────────────────
+
+
+@router.post("/{career_id}/match/{event_id}/resume")
+async def resume_match(
+    career_id: int,
+    event_id: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Simulate minutes 46..90, persist final result, drop session row."""
+    sess = await _get_session_row(db, career_id, event_id)
+    if not sess or sess["phase"] != "halftime":
+        raise HTTPException(400, "Матч не на перерыве")
+
+    state = _deserialise_state(sess["state_json"])
+    engine = MatchEngine(db)
+    result = await engine.simulate_second_half(state, subs=None)
+
+    # Persist match result on the calendar event.
+    new_desc_prefix = state.get("home_club_name", "Home") + " vs " + state.get("away_club_name", "Away")
+    new_desc = (
+        f"{new_desc_prefix} | RESULT: {result.home_score}-{result.away_score}"
+    )
+    await db.execute(text(
+        "UPDATE calendar_events SET description = :d, is_locked = 1 "
+        "WHERE id = :e AND career_id = :c"
+    ), {"d": new_desc, "e": event_id, "c": career_id})
+    await db.execute(text(
+        "DELETE FROM match_sessions WHERE id = :i"
+    ), {"i": sess["id"]})
+    await db.commit()
+
+    return {
+        "event_id": event_id,
+        "phase": "finished",
+        "home_score": result.home_score,
+        "away_score": result.away_score,
+        "home_team_name": result.home_team_name,
+        "away_team_name": result.away_team_name,
+        "home_shots": result.home_shots,
+        "away_shots": result.away_shots,
+        "home_possession": result.home_possession,
+        "away_possession": result.away_possession,
+        "events": [asdict(e) if hasattr(e, "__dataclass_fields__") else e
+                   for e in result.events],
+    }

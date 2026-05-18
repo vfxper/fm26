@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚽ Football Manager 26 - Match Simulation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0f1923; 
+  color: #fff; 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overflow: hidden;
+  height: 100vh;
+}
+.container { display: flex; flex-direction: column; height: 100vh; }
+
+/* Scoreboard */
+.scoreboard {
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px 20px; background: #1a2634;
+  border-bottom: 2px solid #2d4a5e;
+}
+.team { text-align: center; flex: 1; }
+.team-name { font-size: 14px; color: #8ba4b8; margin-bottom: 4px; }
+.team-score { font-size: 42px; font-weight: 700; }
+.home .team-score { color: #4fc3f7; }
+.away .team-score { color: #ef5350; }
+.match-info { text-align: center; padding: 0 20px; min-width: 100px; }
+.match-time { font-size: 24px; font-weight: 600; color: #66bb6a; }
+.match-status { font-size: 11px; color: #8ba4b8; margin-top: 2px; }
+
+/* Pitch */
+.pitch-container { flex: 1; position: relative; padding: 10px; }
+canvas { 
+  width: 100%; height: 100%; 
+  border-radius: 8px;
+  display: block;
+}
+
+/* Controls */
+.controls {
+  display: flex; align-items: center; justify-content: center;
+  padding: 10px 20px; background: #1a2634; gap: 10px;
+  border-top: 2px solid #2d4a5e;
+}
+.btn {
+  padding: 8px 16px; border: none; border-radius: 6px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary { background: #4fc3f7; color: #0f1923; }
+.btn-primary:hover { background: #81d4fa; }
+.btn-secondary { background: #2d4a5e; color: #fff; }
+.btn-secondary:hover { background: #3d5a6e; }
+.btn-active { background: #66bb6a; color: #0f1923; }
+.speed-label { color: #8ba4b8; font-size: 12px; }
+
+/* Commentary */
+.commentary {
+  height: 140px; overflow-y: auto; padding: 10px 16px;
+  background: #141e28; border-top: 1px solid #2d4a5e;
+  font-size: 12px; line-height: 1.6;
+}
+.commentary-line { padding: 2px 0; }
+.commentary-line .minute { color: #66bb6a; font-weight: 600; }
+.commentary-line .goal { color: #ffd54f; font-weight: 700; }
+.commentary-line .shot { color: #4fc3f7; }
+.commentary-line .tackle { color: #ef5350; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Scoreboard -->
+  <div class="scoreboard">
+    <div class="team home">
+      <div class="team-name" id="home-name">Real Madrid</div>
+      <div class="team-score" id="home-score">0</div>
+    </div>
+    <div class="match-info">
+      <div class="match-time" id="match-time">0'</div>
+      <div class="match-status" id="match-status">Not Started</div>
+    </div>
+    <div class="team away">
+      <div class="team-name" id="away-name">Manchester City</div>
+      <div class="team-score" id="away-score">0</div>
+    </div>
+  </div>
+
+  <!-- Pitch Canvas -->
+  <div class="pitch-container">
+    <canvas id="pitch"></canvas>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-primary" id="btn-start" onclick="startMatch()">▶ Start Match</button>
+    <button class="btn btn-secondary" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+    <span class="speed-label">Speed:</span>
+    <button class="btn btn-secondary" onclick="setSpeed(1)">1x</button>
+    <button class="btn btn-active" onclick="setSpeed(2)">2x</button>
+    <button class="btn btn-secondary" onclick="setSpeed(4)">4x</button>
+    <button class="btn btn-secondary" onclick="setSpeed(10)">10x</button>
+    <button class="btn btn-primary" onclick="newMatch()">🔄 New Match</button>
+  </div>
+
+  <!-- Commentary -->
+  <div class="commentary" id="commentary"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// MATCH SIMULATION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const TEAMS = {
+  home: {
+    name: "Real Madrid", color: "#4fc3f7", 
+    players: [
+      {name:"Courtois", pos:"GK", x:50, y:6, num:1, ca:181},
+      {name:"Carvajal", pos:"RB", x:80, y:22, num:2, ca:155},
+      {name:"Rüdiger", pos:"CB", x:60, y:18, num:22, ca:163},
+      {name:"Militão", pos:"CB", x:40, y:18, num:3, ca:160},
+      {name:"Mendy", pos:"LB", x:20, y:22, num:23, ca:152},
+      {name:"Tchouaméni", pos:"DM", x:50, y:35, num:18, ca:162},
+      {name:"Valverde", pos:"CM", x:65, y:45, num:15, ca:175},
+      {name:"Bellingham", pos:"AM", x:50, y:55, num:5, ca:181},
+      {name:"Rodrygo", pos:"RW", x:80, y:65, num:11, ca:165},
+      {name:"Vinícius", pos:"LW", x:20, y:65, num:7, ca:183},
+      {name:"Mbappé", pos:"ST", x:50, y:78, num:9, ca:191},
+    ]
+  },
+  away: {
+    name: "Manchester City", color: "#ef5350",
+    players: [
+      {name:"Donnarumma", pos:"GK", x:50, y:94, num:1, ca:167},
+      {name:"Gvardiol", pos:"LB", x:20, y:78, num:24, ca:158},
+      {name:"Dias", pos:"CB", x:40, y:82, num:3, ca:170},
+      {name:"Stones", pos:"CB", x:60, y:82, num:5, ca:165},
+      {name:"Walker", pos:"RB", x:80, y:78, num:2, ca:155},
+      {name:"Rodri", pos:"DM", x:50, y:65, num:16, ca:180},
+      {name:"De Bruyne", pos:"CM", x:35, y:55, num:17, ca:175},
+      {name:"Foden", pos:"AM", x:50, y:48, num:47, ca:168},
+      {name:"Doku", pos:"LW", x:20, y:38, num:11, ca:160},
+      {name:"Marmoush", pos:"RW", x:80, y:38, num:19, ca:163},
+      {name:"Haaland", pos:"ST", x:50, y:22, num:9, ca:184},
+    ]
+  }
+};
+
+let matchState = {
+  minute: 0, homeScore: 0, awayScore: 0,
+  running: false, paused: false, speed: 2,
+  events: [], ballX: 50, ballY: 50,
+  interval: null
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CANVAS RENDERING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('pitch');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resizeCanvas() {
+  const container = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  W = container.clientWidth;
+  H = container.clientHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function toCanvasX(x) { return (x / 100) * W; }
+function toCanvasY(y) { return (y / 100) * H; }
+
+function drawPitch() {
+  // Grass
+  ctx.fillStyle = '#1b5e20';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Grass stripes
+  const stripeH = H / 12;
+  for (let i = 0; i < 12; i += 2) {
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.fillRect(0, i * stripeH, W, stripeH);
+  }
+  
+  // Lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1.5;
+  
+  // Outline
+  const pad = 8;
+  ctx.strokeRect(pad, pad, W - pad*2, H - pad*2);
+  
+  // Center line
+  ctx.beginPath();
+  ctx.moveTo(pad, H/2);
+  ctx.lineTo(W - pad, H/2);
+  ctx.stroke();
+  
+  // Center circle
+  ctx.beginPath();
+  ctx.arc(W/2, H/2, Math.min(W,H)*0.1, 0, Math.PI*2);
+  ctx.stroke();
+  
+  // Center dot
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath();
+  ctx.arc(W/2, H/2, 3, 0, Math.PI*2);
+  ctx.fill();
+  
+  // Penalty areas
+  const paW = W * 0.44, paH = H * 0.16;
+  ctx.strokeRect((W-paW)/2, pad, paW, paH);
+  ctx.strokeRect((W-paW)/2, H - pad - paH, paW, paH);
+  
+  // Goal areas
+  const gaW = W * 0.2, gaH = H * 0.06;
+  ctx.strokeRect((W-gaW)/2, pad, gaW, gaH);
+  ctx.strokeRect((W-gaW)/2, H - pad - gaH, gaW, gaH);
+}
+
+function drawPlayer(player, teamColor, highlight) {
+  const x = toCanvasX(player.x);
+  const y = toCanvasY(player.y);
+  const r = Math.min(W, H) * 0.022;
+  
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(x+1, y+2, r, r*0.5, 0, 0, Math.PI*2);
+  ctx.fill();
+  
+  // Circle
+  ctx.fillStyle = teamColor;
+  if (highlight) {
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 12;
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  
+  // Border
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  
+  // Number
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${r*0.9}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(player.num, x, y);
+  
+  // Name (small)
+  ctx.font = `${Math.max(8, r*0.6)}px sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText(player.name, x, y + r + 10);
+}
+
+function drawBall() {
+  const x = toCanvasX(matchState.ballX);
+  const y = toCanvasY(matchState.ballY);
+  const r = Math.min(W, H) * 0.012;
+  
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(x+1, y+2, r+1, r*0.6, 0, 0, Math.PI*2);
+  ctx.fill();
+  
+  // Ball
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fill();
+  
+  // Pentagon pattern
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(x, y, r*0.4, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawPitch();
+  
+  // Draw players
+  TEAMS.home.players.forEach(p => drawPlayer(p, TEAMS.home.color, false));
+  TEAMS.away.players.forEach(p => drawPlayer(p, TEAMS.away.color, false));
+  
+  // Draw ball
+  drawBall();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MATCH SIMULATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function simulateMinute() {
+  if (matchState.paused || !matchState.running) return;
+  
+  matchState.minute++;
+  
+  if (matchState.minute > 90) {
+    endMatch();
+    return;
+  }
+  
+  // Update time display
+  document.getElementById('match-time').textContent = matchState.minute + "'";
+  document.getElementById('match-status').textContent = matchState.minute <= 45 ? '1st Half' : '2nd Half';
+  
+  // Move ball randomly
+  matchState.ballX += (Math.random() - 0.5) * 15;
+  matchState.ballY += (Math.random() - 0.5) * 15;
+  matchState.ballX = Math.max(5, Math.min(95, matchState.ballX));
+  matchState.ballY = Math.max(5, Math.min(95, matchState.ballY));
+  
+  // Move players slightly
+  TEAMS.home.players.forEach(p => {
+    if (p.pos !== 'GK') {
+      p.x += (Math.random() - 0.5) * 3;
+      p.y += (Math.random() - 0.5) * 2;
+      p.x = Math.max(5, Math.min(95, p.x));
+      p.y = Math.max(5, Math.min(85, p.y));
+    }
+  });
+  TEAMS.away.players.forEach(p => {
+    if (p.pos !== 'GK') {
+      p.x += (Math.random() - 0.5) * 3;
+      p.y += (Math.random() - 0.5) * 2;
+      p.x = Math.max(5, Math.min(95, p.x));
+      p.y = Math.max(15, Math.min(95, p.y));
+    }
+  });
+  
+  // Generate events
+  if (Math.random() < 0.12) {
+    generateEvent();
+  }
+  
+  draw();
+}
+
+function generateEvent() {
+  const isHome = Math.random() < 0.52; // slight home advantage
+  const team = isHome ? TEAMS.home : TEAMS.away;
+  const player = team.players[Math.floor(Math.random() * team.players.length)];
+  const roll = Math.random();
+  
+  let text = '';
+  let cls = '';
+  
+  if (roll < 0.04) {
+    // GOAL!
+    if (isHome) matchState.homeScore++;
+    else matchState.awayScore++;
+    document.getElementById('home-score').textContent = matchState.homeScore;
+    document.getElementById('away-score').textContent = matchState.awayScore;
+    matchState.ballX = 50;
+    matchState.ballY = isHome ? 94 : 6;
+    text = `⚽ GOAL! ${player.name} (${team.name}) - Score: ${matchState.homeScore}-${matchState.awayScore}`;
+    cls = 'goal';
+  } else if (roll < 0.15) {
+    text = `🎯 Shot by ${player.name} (${team.name})`;
+    cls = 'shot';
+    matchState.ballX = 50 + (Math.random()-0.5)*20;
+    matchState.ballY = isHome ? 90 : 10;
+  } else if (roll < 0.30) {
+    text = `🔑 Key pass by ${player.name} (${team.name})`;
+    cls = '';
+  } else if (roll < 0.40) {
+    text = `🦶 Tackle by ${player.name} (${team.name})`;
+    cls = 'tackle';
+  } else if (roll < 0.45) {
+    text = `🟡 Yellow card: ${player.name} (${team.name})`;
+    cls = 'tackle';
+  } else {
+    return; // no event
+  }
+  
+  addCommentary(matchState.minute, text, cls);
+}
+
+function addCommentary(minute, text, cls) {
+  const div = document.getElementById('commentary');
+  const line = document.createElement('div');
+  line.className = 'commentary-line';
+  line.innerHTML = `<span class="minute">${minute}'</span> <span class="${cls}">${text}</span>`;
+  div.appendChild(line);
+  div.scrollTop = div.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function startMatch() {
+  if (matchState.running) return;
+  matchState.running = true;
+  matchState.paused = false;
+  document.getElementById('btn-start').textContent = '⚽ Playing...';
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('match-status').textContent = '1st Half';
+  addCommentary(0, '⏱️ KICK OFF!', '');
+  
+  matchState.interval = setInterval(simulateMinute, 1000 / matchState.speed);
+}
+
+function togglePause() {
+  matchState.paused = !matchState.paused;
+  document.getElementById('btn-pause').textContent = matchState.paused ? '▶ Resume' : '⏸ Pause';
+  document.getElementById('match-status').textContent = matchState.paused ? 'PAUSED' : 
+    (matchState.minute <= 45 ? '1st Half' : '2nd Half');
+}
+
+function setSpeed(speed) {
+  matchState.speed = speed;
+  if (matchState.interval) {
+    clearInterval(matchState.interval);
+    matchState.interval = setInterval(simulateMinute, 1000 / speed);
+  }
+  // Update button styles
+  document.querySelectorAll('.controls .btn-secondary, .controls .btn-active').forEach(btn => {
+    if (btn.textContent.includes('x')) {
+      btn.className = btn.textContent.trim() === speed+'x' ? 'btn btn-active' : 'btn btn-secondary';
+    }
+  });
+}
+
+function endMatch() {
+  matchState.running = false;
+  clearInterval(matchState.interval);
+  document.getElementById('match-status').textContent = 'FULL TIME';
+  document.getElementById('match-time').textContent = "90'";
+  document.getElementById('btn-start').textContent = '🏁 Finished';
+  addCommentary(90, `🏁 FULL TIME: ${TEAMS.home.name} ${matchState.homeScore} - ${matchState.awayScore} ${TEAMS.away.name}`, 'goal');
+}
+
+function newMatch() {
+  clearInterval(matchState.interval);
+  matchState = { minute:0, homeScore:0, awayScore:0, running:false, paused:false, speed:2, events:[], ballX:50, ballY:50, interval:null };
+  document.getElementById('home-score').textContent = '0';
+  document.getElementById('away-score').textContent = '0';
+  document.getElementById('match-time').textContent = "0'";
+  document.getElementById('match-status').textContent = 'Not Started';
+  document.getElementById('btn-start').textContent = '▶ Start Match';
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-pause').textContent = '⏸ Pause';
+  document.getElementById('commentary').innerHTML = '';
+  
+  // Reset player positions
+  TEAMS.home.players.forEach((p,i) => { p.x = [50,80,60,40,20,50,65,50,80,20,50][i]; p.y = [6,22,18,18,22,35,45,55,65,65,78][i]; });
+  TEAMS.away.players.forEach((p,i) => { p.x = [50,20,40,60,80,50,35,50,20,80,50][i]; p.y = [94,78,82,82,78,65,55,48,38,38,22][i]; });
+  
+  draw();
+}
+
+// Init
+setTimeout(resizeCanvas, 100);
+</script>
+</body>
+</html>

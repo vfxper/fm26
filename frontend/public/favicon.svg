@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Football/Soccer ball icon -->
+  <circle cx="50" cy="50" r="45" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  
+  <!-- Pentagon pattern -->
+  <polygon points="50,15 65,35 55,55 45,55 35,35" fill="#000000"/>
+  
+  <!-- Hexagons -->
+  <polygon points="35,35 25,45 25,60 35,70 45,55" fill="none" stroke="#000000" stroke-width="2"/>
+  <polygon points="65,35 75,45 75,60 65,70 55,55" fill="none" stroke="#000000" stroke-width="2"/>
+  <polygon points="45,55 35,70 40,85 50,85 55,70" fill="none" stroke="#000000" stroke-width="2"/>
+  <polygon points="55,55 65,70 60,85 50,85 45,70" fill="none" stroke="#000000" stroke-width="2"/>
+</svg>

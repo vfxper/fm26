@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚽ FM26 - Hyper-Realistic Match Simulation v2</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0a1520; 
+  color: #fff; 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overflow: hidden;
+  height: 100vh;
+}
+.container { display: flex; flex-direction: column; height: 100vh; }
+.canvas-wrap { flex: 1; position: relative; }
+canvas { width: 100%; height: 100%; display: block; }
+.controls {
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px 16px; background: #111d2b; gap: 8px;
+  border-top: 1px solid #2a3f55;
+}
+.btn {
+  padding: 6px 14px; border: none; border-radius: 5px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-primary { background: #4fc3f7; color: #0a1520; }
+.btn-primary:hover { background: #81d4fa; }
+.btn-secondary { background: #1e3348; color: #8ba4b8; }
+.btn-secondary:hover { background: #2a4560; color: #fff; }
+.btn-active { background: #66bb6a; color: #0a1520; }
+.speed-label { color: #5a7a90; font-size: 11px; }
+.info { color: #5a7a90; font-size: 11px; margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="canvas-wrap">
+    <canvas id="match-canvas"></canvas>
+  </div>
+  <div class="controls">
+    <button class="btn btn-primary" id="btn-start">▶ Start</button>
+    <button class="btn btn-secondary" id="btn-pause">⏸ Pause</button>
+    <span class="speed-label">Speed:</span>
+    <button class="btn btn-secondary speed-btn" data-speed="0.5">0.5x</button>
+    <button class="btn btn-active speed-btn" data-speed="1">1x</button>
+    <button class="btn btn-secondary speed-btn" data-speed="2">2x</button>
+    <button class="btn btn-secondary speed-btn" data-speed="4">4x</button>
+    <button class="btn btn-secondary" id="btn-camera">📷 Tactical</button>
+    <span class="info" id="info">Ready | FPS: --</span>
+  </div>
+</div>
+
+<script>
+// Polyfill for roundRect (older browsers)
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (typeof r === 'number') r = [r, r, r, r];
+    const [tl, tr, br, bl] = r;
+    this.moveTo(x + tl, y);
+    this.lineTo(x + w - tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + tr);
+    this.lineTo(x + w, y + h - br);
+    this.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+    this.lineTo(x + bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - bl);
+    this.lineTo(x, y + tl);
+    this.quadraticCurveTo(x, y, x + tl, y);
+    this.closePath();
+    return this;
+  };
+}
+</script>
+<script type="module">
+import { FootballSimulation } from './frontend/src/football_sim/FootballSimulation.js';
+
+const canvas = document.getElementById('match-canvas');
+let sim = null;
+let cameraMode = 'follow_ball';
+
+// Create simulation
+function createSim() {
+  if (sim) sim.destroy();
+  
+  sim = new FootballSimulation(canvas, {
+    homeTeam: 'real_madrid',
+    awayTeam: 'manchester_city',
+    speed: 1,
+    seed: Date.now(),
+    weather: {
+      weather: 'clear',
+      timeOfDay: 'evening',
+      temperature: 20,
+      windSpeed: 2,
+      windDirection: Math.PI / 4,
+    },
+  });
+  
+  return sim;
+}
+
+// Controls
+document.getElementById('btn-start').addEventListener('click', () => {
+  if (!sim) createSim();
+  if (!sim.isRunning) {
+    sim.start();
+    document.getElementById('btn-start').textContent = '⚽ Playing';
+    document.getElementById('btn-start').disabled = true;
+  }
+});
+
+document.getElementById('btn-pause').addEventListener('click', () => {
+  if (!sim) return;
+  if (sim.isPaused) {
+    sim.resume();
+    document.getElementById('btn-pause').textContent = '⏸ Pause';
+  } else {
+    sim.pause();
+    document.getElementById('btn-pause').textContent = '▶ Resume';
+  }
+});
+
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const speed = parseFloat(btn.dataset.speed);
+    if (sim) sim.setSpeed(speed);
+    document.querySelectorAll('.speed-btn').forEach(b => b.className = 'btn btn-secondary speed-btn');
+    btn.className = 'btn btn-active speed-btn';
+  });
+});
+
+document.getElementById('btn-camera').addEventListener('click', () => {
+  if (!sim) return;
+  cameraMode = cameraMode === 'follow_ball' ? 'tactical' : 'follow_ball';
+  sim.setCameraMode(cameraMode);
+  document.getElementById('btn-camera').textContent = cameraMode === 'tactical' ? '📷 Follow' : '📷 Tactical';
+});
+
+// FPS display
+setInterval(() => {
+  if (sim && sim.engine) {
+    const state = sim.getMatchState();
+    const phase = state.phase === 'full_time' ? 'FULL TIME' : 
+                  state.phase === 'half_time' ? 'HALF TIME' : '';
+    document.getElementById('info').textContent = 
+      `${state.getTimeString()} | ${state.homeScore}-${state.awayScore} | FPS: ${sim.engine.fps} ${phase}`;
+  }
+}, 500);
+
+// Auto-create and start on load
+createSim();
+// Auto-start after a brief moment
+setTimeout(() => {
+  document.getElementById('btn-start').click();
+}, 500);
+</script>
+</body>
+</html>

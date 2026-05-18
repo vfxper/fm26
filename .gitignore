@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Environment Variables
+.env
+.env.local
+.env.backup.*
+
+# Keep environment templates but not actual environment files with credentials
+# .env.development - committed (safe for local dev)
+# .env.staging - committed (template, needs updates)
+# .env.production - committed (template, needs updates)
+# .env - ignored (active environment file)
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic
+alembic/versions/*.pyc
+
+# Redis dump
+dump.rdb
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Football AI training artifacts (large, local-only).
+# These files (~gigabytes of PPO checkpoints) are not needed in
+# production — the deployed game uses the rule-based MatchSimulator.
+football_ai/models/
+football_ai/models_11v11/
+football_ai/models_11v11_v3/
+football_ai/logs/
+football_ai/logs_11v11/
+football_ai/logs_11v11_v2/
+football_ai/logs_11v11_v3/
+
+# Hypothesis property-test cache (regenerated locally).
+.hypothesis/
+
+# Local artefacts that should never be committed.
+fm26_local.db
+fm26.db
+tfm_players.db
+output.txt
+
+# CSV is committed because seed_local.py reads it on Render's first boot.
+# Keep this here as a reminder. To exclude, uncomment:
+# 2600球员属性.csv

@@ -1,0 +1,84 @@
+# Docker Compose - Full stack deployment (Task 37)
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://fm26:fm26pass@db:5432/fm26
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - BOT_TOKEN=${BOT_TOKEN}
+      - JWT_SECRET=${JWT_SECRET:-supersecretkey}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=fm26
+      - POSTGRES_USER=fm26
+      - POSTGRES_PASSWORD=fm26pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fm26"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  celery:
+    build: .
+    command: celery -A app.core.celery worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://fm26:fm26pass@db:5432/fm26
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend/dist:/usr/share/nginx/html
+      - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

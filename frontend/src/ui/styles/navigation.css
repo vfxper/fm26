@@ -1,0 +1,202 @@
+/**
+ * navigation.css - Bottom nav, responsive layout, orientation support
+ */
+
+/* ===== Bottom Navigation Bar ===== */
+.bottom-nav {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: 60px;
+  background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  border-top: 1px solid var(--tg-theme-hint-color, rgba(0, 0, 0, 0.1));
+  padding: 0;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 100;
+  /* Safe area for devices with home indicator */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.bottom-nav__tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  transition: opacity 0.15s ease;
+  color: var(--tg-theme-hint-color, #999999);
+}
+
+.bottom-nav__tab:active {
+  opacity: 0.6;
+}
+
+.bottom-nav__tab--active {
+  color: var(--tg-theme-link-color, #007aff);
+}
+
+.bottom-nav__icon {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bottom-nav__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.bottom-nav__label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bottom-nav__badge {
+  position: absolute;
+  top: 4px;
+  right: calc(50% - 16px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  background-color: #ff3b30;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ===== Full Viewport Layout ===== */
+.app-layout {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.app-layout__content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ===== Screen Container ===== */
+.screen {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  background-color: var(--tg-theme-bg-color, #ffffff);
+}
+
+.screen__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: var(--tg-theme-bg-color, #ffffff);
+  border-bottom: 1px solid var(--tg-theme-hint-color, rgba(0, 0, 0, 0.08));
+}
+
+.screen__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--tg-theme-text-color, #000000);
+  margin: 0;
+}
+
+.screen__subtitle {
+  font-size: 13px;
+  color: var(--tg-theme-hint-color, #999999);
+}
+
+/* ===== Orientation Support ===== */
+@media (orientation: landscape) {
+  .bottom-nav {
+    height: 48px;
+    padding-bottom: 0;
+  }
+
+  .bottom-nav__icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .bottom-nav__label {
+    font-size: 9px;
+  }
+
+  .screen__header {
+    padding: 8px 16px;
+  }
+
+  .screen__title {
+    font-size: 16px;
+  }
+}
+
+@media (orientation: portrait) {
+  .bottom-nav {
+    height: 60px;
+  }
+}
+
+/* ===== Responsive Breakpoints ===== */
+@media (max-width: 320px) {
+  .bottom-nav__label {
+    font-size: 9px;
+  }
+
+  .bottom-nav__icon svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (min-width: 768px) {
+  .bottom-nav {
+    max-width: 500px;
+    margin: 0 auto;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav__tab {
+    transition: none;
+  }
+}
+
+/* ===== Focus Styles (Accessibility) ===== */
+.bottom-nav__tab:focus-visible {
+  outline: 2px solid var(--tg-theme-link-color, #007aff);
+  outline-offset: -2px;
+  border-radius: 8px;
+}

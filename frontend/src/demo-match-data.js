@@ -1,0 +1,165 @@
+/**
+ * Demo match data for testing the match renderer
+ * This file provides sample data to test the 2D match visualization
+ */
+
+export const demoMatchData = {
+  homeTeam: {
+    name: 'Manchester United',
+    color: '#ff0000',
+    players: [
+      { id: 1, number: 1, name: 'De Gea', x: 10, y: 34 },
+      { id: 2, number: 2, name: 'Wan-Bissaka', x: 25, y: 58 },
+      { id: 3, number: 5, name: 'Maguire', x: 25, y: 44 },
+      { id: 4, number: 6, name: 'Martinez', x: 25, y: 24 },
+      { id: 5, number: 23, name: 'Shaw', x: 25, y: 10 },
+      { id: 6, number: 18, name: 'Casemiro', x: 45, y: 34 },
+      { id: 7, number: 8, name: 'Fernandes', x: 55, y: 34 },
+      { id: 8, number: 25, name: 'Sancho', x: 70, y: 10 },
+      { id: 9, number: 10, name: 'Rashford', x: 70, y: 58 },
+      { id: 10, number: 21, name: 'Antony', x: 85, y: 24 },
+      { id: 11, number: 9, name: 'Martial', x: 85, y: 44 },
+    ],
+  },
+  awayTeam: {
+    name: 'Liverpool',
+    color: '#0000ff',
+    players: [
+      { id: 12, number: 1, name: 'Alisson', x: 95, y: 34 },
+      { id: 13, number: 66, name: 'Alexander-Arnold', x: 80, y: 10 },
+      { id: 14, number: 4, name: 'Van Dijk', x: 80, y: 24 },
+      { id: 15, number: 5, name: 'Konate', x: 80, y: 44 },
+      { id: 16, number: 26, name: 'Robertson', x: 80, y: 58 },
+      { id: 17, number: 3, name: 'Fabinho', x: 60, y: 34 },
+      { id: 18, number: 14, name: 'Henderson', x: 50, y: 34 },
+      { id: 19, number: 11, name: 'Salah', x: 35, y: 58 },
+      { id: 20, number: 20, name: 'Jota', x: 35, y: 10 },
+      { id: 21, number: 23, name: 'Diaz', x: 20, y: 44 },
+      { id: 22, number: 27, name: 'Nunez', x: 20, y: 24 },
+    ],
+  },
+  events: [
+    {
+      minute: 0,
+      second: 0,
+      event_type: 'KICKOFF',
+      team: 'home',
+      player_id: 11,
+      position: { x: 52.5, y: 34 },
+      success: true,
+    },
+    {
+      minute: 5,
+      second: 23,
+      event_type: 'PASS',
+      team: 'home',
+      player_id: 7,
+      target_player_id: 10,
+      position: { x: 70, y: 30 },
+      success: true,
+    },
+    {
+      minute: 12,
+      second: 45,
+      event_type: 'SHOT',
+      team: 'home',
+      player_id: 9,
+      position: { x: 95, y: 38 },
+      success: false,
+      metadata: { saved: true },
+    },
+    {
+      minute: 18,
+      second: 12,
+      event_type: 'SHOT',
+      team: 'away',
+      player_id: 19,
+      position: { x: 10, y: 30 },
+      success: true,
+    },
+    {
+      minute: 18,
+      second: 12,
+      event_type: 'GOAL',
+      team: 'away',
+      player_id: 19,
+      position: { x: 10, y: 30 },
+      success: true,
+      metadata: { assist_player_id: 21 },
+    },
+    {
+      minute: 25,
+      second: 34,
+      event_type: 'TACKLE',
+      team: 'home',
+      player_id: 6,
+      target_player_id: 17,
+      position: { x: 50, y: 35 },
+      success: true,
+    },
+    {
+      minute: 32,
+      second: 56,
+      event_type: 'SHOT',
+      team: 'home',
+      player_id: 7,
+      position: { x: 92, y: 34 },
+      success: true,
+    },
+    {
+      minute: 32,
+      second: 56,
+      event_type: 'GOAL',
+      team: 'home',
+      player_id: 7,
+      position: { x: 92, y: 34 },
+      success: true,
+      metadata: { assist_player_id: 10 },
+    },
+    {
+      minute: 45,
+      second: 0,
+      event_type: 'HALF_TIME',
+      team: null,
+      player_id: null,
+      position: null,
+      success: true,
+    },
+    {
+      minute: 67,
+      second: 23,
+      event_type: 'SHOT',
+      team: 'home',
+      player_id: 9,
+      position: { x: 98, y: 40 },
+      success: true,
+    },
+    {
+      minute: 67,
+      second: 23,
+      event_type: 'GOAL',
+      team: 'home',
+      player_id: 9,
+      position: { x: 98, y: 40 },
+      success: true,
+      metadata: { assist_player_id: 8 },
+    },
+    {
+      minute: 90,
+      second: 0,
+      event_type: 'FULL_TIME',
+      team: null,
+      player_id: null,
+      position: null,
+      success: true,
+    },
+  ],
+};
+
+/**
+ * Get demo match data
+ * @returns {Object} Demo match data
+ */
+export function getDemoMatchData() {
+  return JSON.parse(JSON.stringify(demoMatchData)); // Deep clone
+}
