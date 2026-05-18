@@ -98,6 +98,9 @@ football_ai/logs_11v11_v4/
 
 # Local artefacts that should never be committed.
 fm26_local.db
+fm26_local.db-wal
+fm26_local.db-shm
+fm26_local.db-journal
 fm26.db
 tfm_players.db
 output.txt
