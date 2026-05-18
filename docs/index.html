@@ -3425,13 +3425,22 @@ async function saveTacticsToServer() {
   console.log('[saveTactics] sending payload:', payload);
   try {
     // Use raw fetch so we see the real status code on error.
+    const _hdrs = {'Content-Type': 'application/json'};
+    if (authToken && authToken !== 'guest' && authToken !== 'registered') {
+      _hdrs['Authorization'] = `Bearer ${authToken}`;
+    }
     const res = await fetch(API + `/careers/${careerId}/tactics`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: _hdrs,
       body: JSON.stringify(payload),
     });
     const r = await res.json();
     console.log('[saveTactics] status', res.status, 'response', r);
+    // 403 = career belongs to another user → reset and bounce.
+    if (res.status === 403) {
+      _handleStaleCareer('forbidden');
+      return;
+    }
     if (res.ok && r && r.success) {
       const btn = document.querySelector('button[onclick="saveTacticsToServer()"]');
       if (btn) {
