@@ -925,6 +925,18 @@ if __name__ == "__main__":
     try:
         import sqlite3 as _sq
         _db_path = os.path.join(os.path.dirname(__file__), "fm26_local.db")
+        # 1. Create the schema synchronously so seed_local can run before
+        # FastAPI startup. We use SQLAlchemy's sync metadata.create_all
+        # against a regular sqlite:// engine (not the async aiosqlite one).
+        try:
+            from sqlalchemy import create_engine as _create_engine
+            _sync_engine = _create_engine(f"sqlite:///{_db_path}")
+            with _sync_engine.begin() as _conn:
+                create_tables(_conn)
+            _sync_engine.dispose()
+        except Exception as _e:
+            print(f"  ⚠ Schema create failed: {_e}")
+        # 2. Check if seeded.
         if os.path.exists(_db_path):
             _con = _sq.connect(_db_path)
             try:
@@ -939,6 +951,9 @@ if __name__ == "__main__":
                     import seed_local as _seed
                     _seed.seed_database()
                     print("  ✓ Database seeded")
+                except SystemExit:
+                    # seed_local.sys.exit on missing DB - ignore (we just made it)
+                    print("  ⚠ Auto-seed exited early")
                 except Exception as _e:
                     print(f"  ⚠ Auto-seed failed: {_e}")
             else:
