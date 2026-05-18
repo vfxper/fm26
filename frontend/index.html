@@ -1122,6 +1122,14 @@ function _resolveApiBase() {
     const cached = localStorage.getItem("fm26_api");
     if (cached) return cached.replace(/\/+$/, "");
   } catch (_) {}
+  // Auto-detect: if served from GitHub Pages or any remote origin
+  // (not localhost / file://), use the production Render backend.
+  try {
+    const host = window.location.hostname;
+    if (host && host !== "localhost" && host !== "127.0.0.1" && host !== "") {
+      return "https://fm26-lahx.onrender.com/api";
+    }
+  } catch (_) {}
   return "http://localhost:8000/api";
 }
 const API = _resolveApiBase();
