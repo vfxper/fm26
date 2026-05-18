@@ -209,9 +209,10 @@ async def run_daily_ai_transfers(
             is_loan = age < 24 and random.random() < 0.30
             fee = 0 if is_loan else await _real_market_value(db, player_id, fallback_ca=ca)
 
-            await db.execute(text(
-                "UPDATE players SET club = :nb WHERE id = :p"
-            ), {"nb": buyer, "p": player_id})
+            # AI-vs-AI deals are PER-CAREER (career_id is in
+            # ai_transfers below). Do NOT mutate players.club —
+            # that's the shared CSV snapshot, mutating it leaks the
+            # transfer to all other careers on the same DB.
             await db.execute(text(
                 "INSERT INTO ai_transfers "
                 "(career_id, player_id, player_name, from_club, to_club, fee, "

@@ -704,9 +704,9 @@ async def make_offer(
 
         # Update player.club + add to squad_players
         if not body.is_loan:
-            await db.execute(text(
-                "UPDATE players SET club = :nc WHERE id = :p"
-            ), {"nc": club_name, "p": pid})
+            # DO NOT mutate players.club — that's the shared CSV
+            # snapshot. Per-career ownership lives in squad_players,
+            # which we INSERT below.
             await db.execute(text(
                 "UPDATE careers SET budget = budget - :f WHERE id = :c"
             ), {"f": body.fee, "c": career_id})
@@ -764,6 +764,10 @@ async def make_offer(
         "offer_id": offer_id,
         "attempt": attempts + 1,
         "insult": insult_reject if not body.is_loan else False,
+        # Echo player meta so the frontend can trigger signing videos
+        # / "set training role" prompt without re-fetching the squad.
+        "player_id": pid,
+        "player_name": pname,
     }
 
 

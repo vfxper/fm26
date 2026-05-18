@@ -2098,6 +2098,13 @@ function _formatGameDate(iso) {
 }
 
 async function advanceDay() {
+  // While the pre-match gate is active, the underlying screen still
+  // shows the header "Continue" button. Pressing it here would loop
+  // back into the match-day modal forever. Block until the gate is
+  // resolved.
+  if (window._prematchActive) {
+    return;
+  }
   const data = await api(`/careers/${careerId}/advance-day`, 'POST');
   if (data && data.season) {
     const newDate = data.game_date || data.current_date;
@@ -2955,7 +2962,18 @@ async function searchPlayers() {
   params.append('order_by', 'ca');
 
   const data = await api(`/players/search?${params.toString()}`);
+  // Pull current squad to mark + filter out already-owned players.
+  let ownedIds = new Set();
+  try {
+    const sq = await api(`/careers/${careerId}/squad`);
+    for (const p of (sq?.squad || [])) {
+      ownedIds.add(p.player_id || p.id);
+    }
+  } catch (_) {}
   if (data.players && data.players.length > 0) {
+    // Drop players already in our squad to avoid the "I bought Yamal
+    // and can buy him again" bug.
+    data.players = data.players.filter(p => !ownedIds.has(p.id || p.uid));
     let html = '<table class="squad-table"><tr><th>Имя</th><th>Поз</th><th>Клуб</th><th>Возр</th><th>CA</th><th>PA</th><th>Действие</th></tr>';
     for (const p of data.players) {
       const pid = p.id || p.uid;
@@ -4615,6 +4633,8 @@ async function _ensureLineupSet() {
 //   - "Отмена" resolves false (caller should abort starting the match)
 function _openPreMatchGate(xiCount) {
   return new Promise(resolve => {
+    // Mark gate as active so the header Continue button stops working.
+    window._prematchActive = true;
     // First: switch to the tactics screen so the user can edit.
     if (typeof showScreen === 'function') showScreen('tactics');
 
@@ -4682,6 +4702,7 @@ function _openPreMatchGate(xiCount) {
       document.body.style.paddingTop = '';
       window._prematchCancel = null;
       window._prematchConfirm = null;
+      window._prematchActive = false;
       resolve(result);
     }
 

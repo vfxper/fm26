@@ -281,10 +281,11 @@ async def apply_action(
             await db.execute(text(
                 "DELETE FROM squad_players WHERE id = :s AND career_id = :c"
             ), {"s": sp_id, "c": career_id})
-            if to_club:
-                await db.execute(text(
-                    "UPDATE players SET club = :nc WHERE id = :p"
-                ), {"nc": to_club, "p": player_id})
+            # Per-career squad ownership lives in squad_players (we just
+            # deleted that row). DO NOT mutate players.club here — that
+            # column is the shared CSV snapshot, mutating it leaks the
+            # transfer to every OTHER career on the same DB (e.g. another
+            # user manages Real Madrid and suddenly Mbappe is at Vallecano).
             await db.execute(text(
                 "INSERT INTO ai_transfers "
                 "(career_id, player_id, player_name, from_club, to_club, fee, "
@@ -312,10 +313,7 @@ async def apply_action(
                 "UPDATE squad_players SET is_loaned = 1 "
                 "WHERE id = :s AND career_id = :c"
             ), {"s": sp_id, "c": career_id})
-            if to_club:
-                await db.execute(text(
-                    "UPDATE players SET club = :nc WHERE id = :p"
-                ), {"nc": to_club, "p": player_id})
+            # Loan: don't mutate players.club globally either.
             await db.execute(text(
                 "INSERT INTO ai_transfers "
                 "(career_id, player_id, player_name, from_club, to_club, fee, "
