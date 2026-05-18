@@ -410,7 +410,6 @@ select.form-input { appearance: none; -webkit-appearance: none; background-image
       <input type="password" class="form-input" id="auth-password" placeholder="Пароль">
       <button class="btn btn-primary" onclick="doLogin()">Войти</button>
       <button class="btn btn-secondary" onclick="showRegister()">Нет аккаунта? Регистрация</button>
-      <button class="btn btn-secondary" style="margin-top:4px" onclick="skipAuth()">Пропустить (гость)</button>
     </div>
     <div class="card" id="auth-register-form" style="display:none">
       <h2>Регистрация</h2>
@@ -1164,12 +1163,9 @@ function showRegister() {
 }
 
 function skipAuth() {
-  // Guest mode - skip auth
-  localStorage.setItem('fm26_token', 'guest');
-  authToken = 'guest';
-  document.getElementById('auth-screen').style.display = 'none';
-  document.getElementById('club-select-screen').style.display = 'block';
-  loadClubs();
+  // Guest mode is DISABLED for multi-user safety. All players need their
+  // own account so careers don't collide on the shared backend.
+  alert('Гостевой режим отключён. Войдите или зарегистрируйтесь.');
 }
 
 async function doLogin() {
@@ -1194,8 +1190,7 @@ async function doLogin() {
       alert('Ошибка входа: ' + (data.detail || data.message || 'Неверный email или пароль'));
     }
   } catch (e) {
-    // If auth endpoint doesn't work, skip to guest
-    skipAuth();
+    alert('Сервер недоступен. Попробуйте позже.');
   }
 }
 
@@ -1229,14 +1224,10 @@ async function doRegister() {
       document.getElementById('club-select-screen').style.display = 'block';
       loadClubs();
     } else {
-      // If server error but we're in dev mode, just skip
-      alert('Регистрация: ' + (data.detail || data.message || 'Сервер в dev-режиме, входим как гость'));
-      skipAuth();
+      alert('Ошибка регистрации: ' + (data.detail || data.message || 'неизвестная'));
     }
   } catch (e) {
-    // If register doesn't work, skip
-    alert('Сервер недоступен, входим как гость');
-    skipAuth();
+    alert('Сервер недоступен. Попробуйте позже.');
   }
 }
 
@@ -1365,9 +1356,13 @@ async function startCareer() {
   document.getElementById('start-career-btn').disabled = true;
 
   try {
+    const _hdrs = { 'Content-Type': 'application/json' };
+    if (authToken && authToken !== 'guest' && authToken !== 'registered') {
+      _hdrs['Authorization'] = `Bearer ${authToken}`;
+    }
     const res = await fetch(API + '/careers', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _hdrs,
       body: JSON.stringify({
         club_id: selectedClubId,
         manager_name: managerName,
@@ -5160,35 +5155,48 @@ async function init() {
   const savedCareerId = localStorage.getItem('fm26_career_id');
   const savedToken = localStorage.getItem('fm26_token');
 
+  // Reject legacy guest / placeholder tokens — they let two devices
+  // share the same anonymous user_id on the backend (this is what
+  // caused "two players ended up on the same Real Madrid carrier").
+  const _isRealToken = (t) => (
+    typeof t === 'string'
+    && t
+    && t !== 'guest'
+    && t !== 'registered'
+  );
+  if (!_isRealToken(savedToken)) {
+    try { localStorage.removeItem('fm26_token'); } catch (_) {}
+    try { localStorage.removeItem('fm26_career_id'); } catch (_) {}
+    authToken = null;
+    showAuthScreen();
+    return;
+  }
+  authToken = savedToken;
+
   if (savedCareerId) {
     try {
-      const res = await fetch(API + `/careers/${savedCareerId}`);
-      if (res.status === 404) {
-        // Stale career id — wipe it and fall through to wizard.
-        localStorage.removeItem('fm26_career_id');
-      } else {
-        const data = await res.json();
-        if (data && data.id) {
-          careerId = data.id;
-          enterGame(data);
-          applyGameMode(data.game_mode || 'full');
-          return;
-        }
+      // Use api() so the Authorization header is included — without it
+      // the backend defaults to user_id=1 and may return SOMEONE ELSE'S
+      // career row.
+      const data = await api(`/careers/${savedCareerId}`);
+      if (data && data.id) {
+        careerId = data.id;
+        enterGame(data);
+        applyGameMode(data.game_mode || 'full');
+        return;
       }
+      // 403/404 → wipe stale id and fall through to wizard.
+      localStorage.removeItem('fm26_career_id');
     } catch (e) {
-      // Couldn't reach server — show wizard rather than half-broken game.
+      // Any error (404 / 403 / network) — show wizard rather than
+      // pretending we have a career.
       localStorage.removeItem('fm26_career_id');
     }
   }
 
-  // Show auth screen if no token
-  if (!savedToken) {
-    showAuthScreen();
-  } else {
-    document.getElementById('club-select-screen').style.display = 'block';
-    if (typeof loadClubs === 'function') loadClubs();
-    if (typeof wizardGo === 'function') wizardGo('mode');
-  }
+  document.getElementById('club-select-screen').style.display = 'block';
+  if (typeof loadClubs === 'function') loadClubs();
+  if (typeof wizardGo === 'function') wizardGo('mode');
 }
 
 init();
