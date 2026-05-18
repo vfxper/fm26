@@ -50,7 +50,20 @@ def patch_for_sqlite():
     import app.core.database as db_module
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
     
-    engine = create_async_engine("sqlite+aiosqlite:///./fm26_local.db", echo=False)
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///./fm26_local.db",
+        echo=False,
+        # SQLite needs a long busy timeout when multiple users hit
+        # the same DB file concurrently (e.g. two browsers pressing
+        # Continue at the same time). Without this, the second
+        # request errors out with "database is locked" instead of
+        # waiting for the first to commit.
+        connect_args={"timeout": 30.0},
+        # Serialize writes through a small pool to reduce contention.
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
     SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     
     async def get_db():
@@ -71,6 +84,15 @@ def patch_for_sqlite():
     async def init_db():
         from sqlalchemy import text
         async with engine.begin() as conn:
+            # Enable WAL mode so multiple readers can run alongside a
+            # single writer. Default journal_mode (DELETE) serializes
+            # everything and triggers "database is locked" under load.
+            try:
+                await conn.execute(text("PRAGMA journal_mode=WAL"))
+                await conn.execute(text("PRAGMA synchronous=NORMAL"))
+                await conn.execute(text("PRAGMA busy_timeout=30000"))
+            except Exception:
+                pass
             # Create tables (simplified)
             await conn.run_sync(create_tables)
             # ALTER missing columns on existing DBs (no-op on fresh DB).
